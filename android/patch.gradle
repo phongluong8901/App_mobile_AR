@@ -1,0 +1,17 @@
+// Gradle 9 compatibility patch for plugins (like arcore_flutter_plus)
+// that access `configurations.all` as a property.
+
+try {
+    org.gradle.api.artifacts.ConfigurationContainer.metaClass.getAll = { -> delegate }
+} catch (Throwable ignored) {}
+
+try {
+    Class<?> defaultClass = Class.forName("org.gradle.api.internal.artifacts.configurations.DefaultConfigurationContainer")
+    defaultClass.metaClass.getAll = { -> delegate }
+} catch (Throwable ignored) {}
+
+gradle.beforeProject { p ->
+    try {
+        p.configurations.metaClass.getAll = { -> p.configurations }
+    } catch (Throwable ignored) {}
+}

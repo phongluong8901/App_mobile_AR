@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 import 'app_colors.dart';
 
+/// Định nghĩa các bộ cấu hình giao diện Theme (Light & Dark Theme) theo chuẩn Material 3.
 class AppTheme {
-  AppTheme._();
+  AppTheme._(); // Private constructor
 
+  /// Giao diện nền Sáng (Light Theme)
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
@@ -33,6 +34,7 @@ class AppTheme {
     );
   }
 
+  /// Giao diện nền Tối (Dark Theme)
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
@@ -54,7 +56,7 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: AppColors.darkSurface,
-        elevation: 4,
+        elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );

@@ -1,12 +1,9 @@
+apply(from = "patch.gradle")
+
 allprojects {
     repositories {
         google()
         mavenCentral()
-    }
-    configurations.all {
-        resolutionStrategy {
-            force("androidx.concurrent:concurrent-futures:1.2.0")
-        }
     }
 }
 

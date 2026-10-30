@@ -3,11 +3,16 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+/// Class tiện ích chịu trách nhiệm khởi chạy Google Scene Viewer
+/// (Dịch vụ hiển thị AR 3D 6DoF chuẩn chính chủ của Google trên Android).
 class ArLauncher {
-  ArLauncher._();
+  ArLauncher._(); // Private constructor để ngăn chặn việc khởi tạo đối tượng instance
 
-  /// Mở Google Scene Viewer trực tiếp qua Android Native Intent
-  /// Sử dụng mode=ar_preferred thay vì mode=ar_only để tránh lỗi sập màn hình đen khi camera chưa sẵn sàng
+  /// Mở Google Scene Viewer trực tiếp từ URL của file 3D (.glb).
+  ///
+  /// * [context]: Dùng để lấy ScaffoldMessenger hiển thị SnackBar khi có lỗi.
+  /// * [modelUrl]: Đường dẫn trực tiếp tới file mô hình 3D (.glb).
+  /// * [title]: Tiêu đề hiển thị trên thanh công cụ AR.
   static Future<void> launchAr({
     required BuildContext context,
     required String modelUrl,
@@ -15,11 +20,18 @@ class ArLauncher {
   }) async {
     final messenger = ScaffoldMessenger.of(context);
 
-    if (Platform.isAndroid) {
-      final sceneViewerUrl =
-          'https://arvr.google.com/scene-viewer/1.0?file=${Uri.encodeComponent(modelUrl)}&mode=ar_preferred&title=${Uri.encodeComponent(title)}&resizable=true';
+    // 1. Xây dựng URL theo đặc tả kỹ thuật chuẩn của Google Scene Viewer
+    // Tham khảo: https://developers.google.com/ar/develop/scene-viewer
+    final uri = Uri.https('arvr.google.com', '/scene-viewer/1.0', {
+      'file': modelUrl,          // Link tải mô hình 3D (.glb)
+      'mode': 'ar_preferred',    // Ưu tiên mở thẳng vào camera AR thay vì chỉ xem 3D trên màn hình phẳng
+      'title': title,            // Tên vật thể
+      'resizable': 'true',       // Cho phép người dùng dùng 2 ngón tay phóng to/thu nhỏ mô hình ngoài đời
+    });
+    final sceneViewerUrl = uri.toString();
 
-      // 1. Thử gọi qua Google App (Google Quick Search Box) - ứng dụng chứa Scene Viewer chuẩn nhất của Android
+    if (Platform.isAndroid) {
+      // Chiến lược 1: Thử gọi qua ứng dụng Google chính (Google Quick Search Box) - Nơi Scene Viewer thường tích hợp sẵn
       try {
         final intent = AndroidIntent(
           action: 'android.intent.action.VIEW',
@@ -32,7 +44,7 @@ class ArLauncher {
         debugPrint('Google QuickSearchBox intent failed: $e');
       }
 
-      // 2. Thử gọi qua Google Play Services for AR (ARCore)
+      // Chiến lược 2 (Fallback 1): Gọi trực tiếp qua dịch vụ Google Play Services for AR (ARCore APK)
       try {
         final arCoreIntent = AndroidIntent(
           action: 'android.intent.action.VIEW',
@@ -45,23 +57,33 @@ class ArLauncher {
         debugPrint('ARCore intent failed: $e');
       }
 
-      // 3. Fallback mở qua browser / Chrome Custom Tabs
-      final uri = Uri.parse(sceneViewerUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      // Chiến lược 3 (Fallback 2): Phát Intent tổng quát không chỉ định package (Để Android tự chọn App hỗ trợ)
+      try {
+        final generalIntent = AndroidIntent(
+          action: 'android.intent.action.VIEW',
+          data: sceneViewerUrl,
+        );
+        await generalIntent.launch();
         return;
+      } catch (e) {
+        debugPrint('General intent failed: $e');
       }
     }
 
-    // Nếu không mở được (ví dụ máy thiếu dịch vụ Google)
+    // Chiến lược 4 (Fallback cuối cho Browser / iOS QuickLook): Mở bằng trình duyệt ngoài
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    // Thông báo nếu thiết bị chưa cài đặt dịch vụ Google AR hoặc không hỗ trợ
     messenger.showSnackBar(
       const SnackBar(
         content: Text(
-          'Không thể khởi động Scene Viewer. Hãy kiểm tra ứng dụng Google hoặc Google Play Services for AR trên máy.',
+          'Không thể khởi động Scene Viewer. Hãy kiểm tra ứng dụng Google trên máy.',
         ),
         backgroundColor: Colors.redAccent,
       ),
     );
   }
 }
-

@@ -17,6 +17,8 @@ pluginManagement {
     }
 }
 
+apply(from = "patch.gradle")
+
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "9.1.0" apply false

@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:proj_1/features/home/presentation/screens/ar_view_screen.dart';
 import 'package:proj_1/features/home/presentation/screens/model_viewer_screen.dart';
-
 import '../../../../app/config/theme/theme_cubit.dart';
 
+/// Màn hình chính (Dashboard Hub).
+///
+/// Cung cấp 2 lựa chọn trải nghiệm AR:
+/// 1. AR Native 6DoF (ARCore Space Studio) - Quét sàn, đặt vật thể và đi vòng quanh.
+/// 2. 3D Model Studio & Scene Viewer - Xoay/zoom mô hình và mở Google Scene Viewer.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -16,8 +20,10 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('AR 3D Production Studio'),
         actions: [
+          // Nút chuyển đổi nhanh chế độ Giao diện Sáng (Light) / Tối (Dark)
           IconButton(
             icon: const Icon(Icons.brightness_6),
+            tooltip: 'Đổi giao diện Sáng / Tối',
             onPressed: () {
               context.read<ThemeCubit>().toggleTheme();
             },
@@ -30,11 +36,12 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Thẻ giới thiệu tổng quan
               Card(
                 elevation: 4,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 child: Padding(
-                  padding: const EdgeInsets.all(28.0),
+                  padding: const EdgeInsets.all(24.0),
                   child: Column(
                     children: [
                       Container(
@@ -49,21 +56,20 @@ class HomeScreen extends StatelessWidget {
                           color: theme.colorScheme.primary,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
                       Text(
-                        'AR & 3D Interactive Space',
+                        'AR Space Studio',
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
-                        textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
                       Text(
-                        'Trải nghiệm mô hình 3D tương tác và đặt trực tiếp vào thế giới thật qua Camera AR.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
+                        'Trải nghiệm thực tế tăng cường 6DoF với công nghệ Google ARCore & Scene Viewer.',
                         textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
+                        ),
                       ),
                     ],
                   ),
@@ -72,69 +78,57 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(height: 32),
 
-              // Nút 1: Mở AR Camera thực tế ảo
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber[700],
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 3,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ArViewScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.camera_alt, size: 26),
-                  label: const Text(
-                    'Mở AR Camera Thực Tế Ảo',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+              // ==========================================
+              // NÚT 1: CHẾ ĐỘ AR NATIVE (CỐT LÕI 6DoF)
+              // ==========================================
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  backgroundColor: Colors.amber[800],
+                  foregroundColor: Colors.white,
                 ),
+                icon: const Icon(Icons.spatial_audio_off_rounded, size: 28),
+                label: const Text(
+                  'AR Native (ARCore 6DoF)',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                onPressed: () {
+                  // Mở màn hình quét mặt sàn & ghim mỏ neo thực tế
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ArViewScreen(),
+                    ),
+                  );
+                },
               ),
 
               const SizedBox(height: 16),
 
-              // Nút 2: Mở 3D Model Viewer
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    side: BorderSide(color: theme.colorScheme.primary, width: 2),
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ModelViewerScreen(
-                          modelUrl: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
-                          modelTitle: 'Astronaut 3D Model',
-                        ),
-                      ),
-                    );
-                  },
-                  icon: Icon(Icons.view_in_ar, size: 26, color: theme.colorScheme.primary),
-                  label: Text(
-                    'Mở 3D Viewer Studio',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
+              // ==========================================
+              // NÚT 2: CHẾ ĐỘ XEM 3D & GOOGLE SCENE VIEWER
+              // ==========================================
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(56),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
+                icon: const Icon(Icons.rocket_launch_outlined, size: 28),
+                label: const Text(
+                  '3D Model & Scene Viewer',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                onPressed: () {
+                  // Mở mô hình Phi hành gia mẫu
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ModelViewerScreen(
+                        modelUrl: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+                        modelTitle: 'Mô hình Phi Hành Gia',
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),

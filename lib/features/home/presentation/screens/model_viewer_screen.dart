@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../../../../core/utils/ar_launcher.dart';
 
+/// Màn hình tương tác và xem trước mô hình 3D (3D Model Studio).
+///
+/// Sử dụng `model_viewer_plus` (dựa trên WebGL / Three.js ngầm).
+/// Cho phép người dùng:
+/// - Xoay 360 độ, zoom phóng to/thu nhỏ mô hình ảo trên màn hình.
+/// - Đổi màu nền phòng trưng bày (Studio Background).
+/// - Bấm nút camera AR ở góc phải để kích hoạt Google Scene Viewer đưa vật thể ra thế giới thực.
 class ModelViewerScreen extends StatefulWidget {
-  final String modelUrl;
-  final String modelTitle;
-  final String? iosModelUrl;
+  final String modelUrl;        // Link file mô hình định dạng .glb
+  final String modelTitle;      // Tiêu đề của mô hình
+  final String? iosModelUrl;    // Link file .usdz dành riêng cho iOS QuickLook
 
   const ModelViewerScreen({
     super.key,
@@ -19,12 +26,18 @@ class ModelViewerScreen extends StatefulWidget {
 }
 
 class _ModelViewerScreenState extends State<ModelViewerScreen> {
+  // Trạng thái tự động quay tròn mô hình
   bool _autoRotate = true;
+
+  // Chỉ số màu nền đang chọn
   int _bgColorIndex = 0;
+
+  // Dữ liệu mô hình hiện tại
   late String _currentModelUrl;
   late String _currentTitle;
   String? _currentIosUrl;
 
+  // Bảng màu nền phòng trưng bày 3D
   static const List<Color> _bgColors = [
     Color(0xFF121826),
     Color(0xFF1E293B),
@@ -50,6 +63,7 @@ class _ModelViewerScreenState extends State<ModelViewerScreen> {
       appBar: AppBar(
         title: Text(_currentTitle),
         actions: [
+          // Nút bấm kích hoạt mở Google Scene Viewer ngoài đời thực
           IconButton(
             tooltip: 'Mở AR Camera trực tiếp',
             icon: const Icon(Icons.view_in_ar, size: 28),
@@ -61,62 +75,46 @@ class _ModelViewerScreenState extends State<ModelViewerScreen> {
               );
             },
           ),
+          // Nút bật/tắt tự động xoay mô hình
+          IconButton(
+            tooltip: _autoRotate ? 'Dừng tự xoay' : 'Bật tự xoay',
+            icon: Icon(_autoRotate ? Icons.pause_circle_outline : Icons.play_circle_outline),
+            onPressed: () {
+              setState(() {
+                _autoRotate = !_autoRotate;
+              });
+            },
+          ),
         ],
       ),
       body: Stack(
         children: [
-          // 1. Core 3D & AR Viewer Widget
-          ModelViewer(
-            key: ValueKey('$_currentModelUrl-$_autoRotate-$_bgColorIndex'),
-            src: _currentModelUrl,
-            iosSrc: _currentIosUrl,
-            alt: "A 3D model of $_currentTitle",
-            ar: true,
-            arModes: const ['scene-viewer', 'webxr', 'quick-look'],
-            arScale: ArScale.auto,
-            arPlacement: ArPlacement.floor,
-            autoRotate: _autoRotate,
-            cameraControls: true,
-            backgroundColor: bgColor,
-          ),
-
-          // Banner hướng dẫn
-          Positioned(
-            top: 16,
-            left: 16,
-            right: 16,
-            child: IgnorePointer(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 10,
-                  horizontal: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.65),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Vuốt để xoay 3D • Thu phóng bằng 2 ngón • Bấm nút "Xem AR Camera" bên dưới để đặt vào phòng thực tế',
-                  style: TextStyle(color: Colors.white, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-              ),
+          // 1. Khung hiển thị mô hình 3D tương tác
+          Container(
+            color: bgColor,
+            child: ModelViewer(
+              backgroundColor: bgColor,
+              src: _currentModelUrl,
+              alt: _currentTitle,
+              ar: true,                         // Kích hoạt chế độ AR nếu thiết bị hỗ trợ
+              arModes: const ['scene-viewer', 'webxr', 'quick-look'],
+              autoRotate: _autoRotate,          // Tự xoay 360 độ
+              cameraControls: true,             // Cho phép vuốt tay để xoay, chụm 2 ngón tay để phóng to/thu nhỏ
+              iosSrc: _currentIosUrl,
+              disableZoom: false,
             ),
           ),
 
-          // 2. Control Panel Overlay ở dưới màn hình
+          // 2. Bảng điều khiển màu nền Studio ở phía dưới
           Positioned(
             bottom: 24,
-            left: 16,
-            right: 16,
+            left: 20,
+            right: 20,
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surface.withValues(alpha: 0.95),
+                color: theme.colorScheme.surface.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
-                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.15),
@@ -126,102 +124,45 @@ class _ModelViewerScreenState extends State<ModelViewerScreen> {
                 ],
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildActionItem(
-                    context,
-                    icon: _autoRotate ? Icons.pause_circle_outline : Icons.rotate_right,
-                    label: _autoRotate ? "Dừng xoay" : "Xoay 360",
-                    onTap: () {
-                      setState(() {
-                        _autoRotate = !_autoRotate;
-                      });
-                    },
+                  Text(
+                    'Màu nền Studio:',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  _buildActionItem(
-                    context,
-                    icon: Icons.palette_outlined,
-                    label: "Đổi nền",
-                    onTap: () {
-                      setState(() {
-                        _bgColorIndex = (_bgColorIndex + 1) % _bgColors.length;
-                      });
-                    },
-                  ),
-                  _buildActionItem(
-                    context,
-                    icon: Icons.swap_horiz,
-                    label: "Đổi mẫu",
-                    onTap: () {
-                      setState(() {
-                        if (_currentModelUrl.contains('Astronaut')) {
-                          _currentModelUrl =
-                              'https://modelviewer.dev/shared-assets/models/RobotExpressive.glb';
-                          _currentIosUrl =
-                              'https://modelviewer.dev/shared-assets/models/RobotExpressive.usdz';
-                          _currentTitle = 'Robot 3D Model';
-                        } else {
-                          _currentModelUrl =
-                              'https://modelviewer.dev/shared-assets/models/Astronaut.glb';
-                          _currentIosUrl =
-                              'https://modelviewer.dev/shared-assets/models/Astronaut.usdz';
-                          _currentTitle = 'Astronaut 3D Model';
-                        }
-                      });
-                    },
-                  ),
-                  // Nút Xem trong AR Native Intent
-                  _buildActionItem(
-                    context,
-                    icon: Icons.view_in_ar,
-                    label: "Xem AR Camera",
-                    highlight: true,
-                    onTap: () {
-                      ArLauncher.launchAr(
-                        context: context,
-                        modelUrl: _currentModelUrl,
-                        title: _currentTitle,
+                  Row(
+                    children: List.generate(_bgColors.length, (index) {
+                      final color = _bgColors[index];
+                      final isSelected = index == _bgColorIndex;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _bgColorIndex = index;
+                          });
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected ? theme.colorScheme.primary : Colors.grey.shade400,
+                              width: isSelected ? 3 : 1,
+                            ),
+                          ),
+                        ),
                       );
-                    },
+                    }),
                   ),
                 ],
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildActionItem(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool highlight = false,
-  }) {
-    final theme = Theme.of(context);
-    final color = highlight ? Colors.amber[800] ?? Colors.amber : theme.colorScheme.primary;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: highlight ? 26 : 24),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: highlight ? FontWeight.bold : FontWeight.w500,
-                color: highlight ? color : null,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

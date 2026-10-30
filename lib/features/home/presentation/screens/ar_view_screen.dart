@@ -1,12 +1,13 @@
-import 'dart:async';
-import 'dart:math' as math;
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:model_viewer_plus/model_viewer_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:sensors_plus/sensors_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:arcore_flutter_plus/arcore_flutter_plus.dart';
+import 'package:vector_math/vector_math_64.dart' as vector;
 
+/// Màn hình AR không gian thực tế (True 6DoF AR Spatial Studio).
+///
+/// Sử dụng công nghệ ARCore Native (SLAM + Plane Detection) kết hợp Sceneform.
+/// Cho phép phát hiện mặt sàn/mặt bàn ngoài đời thực và ghim các vật thể 3D vào
+/// mỏ neo vật lý (Anchor), giúp người dùng có thể bước đi xung quanh 360 độ hoặc ra
+/// đằng sau để quan sát vật thể cố định trong không gian thực.
 class ArViewScreen extends StatefulWidget {
   const ArViewScreen({super.key});
 
@@ -14,393 +15,208 @@ class ArViewScreen extends StatefulWidget {
   State<ArViewScreen> createState() => _ArViewScreenState();
 }
 
-class _ArViewScreenState extends State<ArViewScreen> with WidgetsBindingObserver {
-  CameraController? _cameraController;
-  List<CameraDescription> _cameras = [];
-  int _selectedCameraIndex = 0;
-  bool _isCameraInitialized = false;
-  bool _isPermissionDenied = false;
+class _ArViewScreenState extends State<ArViewScreen> {
+  // Bộ điều khiển phiên làm việc ARCore (quản lý thêm/xóa node và bắt sự kiện chạm)
+  ArCoreController? _arCoreController;
 
-  // Danh sách các mô hình 3D AR
-  int _selectedModelIndex = 0;
-  static const List<Map<String, String>> _models = [
-    {
-      'title': 'Phi hành gia (Astronaut)',
-      'url': 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
-    },
-    {
-      'title': 'Robot cử động (Robot)',
-      'url': 'https://modelviewer.dev/shared-assets/models/RobotExpressive.glb',
-    },
-    {
-      'title': 'Bộ đồ du hành (Neil Armstrong)',
-      'url': 'https://modelviewer.dev/shared-assets/models/NeilArmstrong.glb',
-    },
-    {
-      'title': 'Ghế bành 3D (Sheen Chair)',
-      'url': 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/SheenChair/glTF-Binary/SheenChair.glb',
-    },
+  // Chỉ số loại vật thể 3D đang được người dùng lựa chọn trong thanh công cụ
+  int _selectedShapeIndex = 0;
+
+  // Danh sách tên các mô hình/hình khối có sẵn để tương tác
+  static const List<String> _shapeNames = [
+    'Quả cầu Kim loại',
+    'Khối lập phương Vàng',
+    'Trụ Ruby Đỏ',
+    'Mô hình Phi hành gia',
   ];
 
-  // Tọa độ gốc do người dùng đặt (User Anchor Offset)
-  Offset _baseAnchorOffset = Offset.zero;
-  double _modelScale = 1.0;
-  bool _autoRotate = true;
-
-  // Tính năng Gyroscope World-Tracking (Ghim vào không gian phòng)
-  bool _isGyroTrackingEnabled = true;
-  StreamSubscription<GyroscopeEvent>? _gyroSubscription;
-  double _currentPanX = 0.0; // Góc xoay ngang (rad)
-  double _currentPanY = 0.0; // Góc xoay dọc (rad)
-  DateTime? _lastGyroTimestamp;
-
-  // Hệ số khuếch đại góc nhìn camera (FOV factor ~ 60 độ camera điện thoại)
-  static const double _fovFactor = 650.0;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _loadSavedAnchor();
-    _initCamera();
-    _startGyroTracking();
-  }
+  // Đếm tổng số vật thể đã ghim thành công lên mặt sàn
+  int _placedObjectsCount = 0;
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _gyroSubscription?.cancel();
-    _cameraController?.dispose();
+    // Giải phóng tài nguyên camera và phiên ARCore khi thoát khỏi màn hình
+    _arCoreController?.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final CameraController? cameraController = _cameraController;
-    if (cameraController == null || !cameraController.value.isInitialized) {
-      return;
+  /// Hàm callback được kích hoạt khi ARCore PlatformView khởi tạo thành công
+  void _onArCoreViewCreated(ArCoreController controller) {
+    _arCoreController = controller;
+
+    // Lắng nghe sự kiện người dùng chạm (tap) vào mặt phẳng sàn/bàn đã được ARCore phát hiện
+    _arCoreController?.onPlaneTap = _handleOnPlaneTap;
+  }
+
+  /// Xử lý sự kiện khi có cú chạm vào mặt phẳng
+  void _handleOnPlaneTap(List<ArCoreHitTestResult> hits) {
+    // Nếu điểm chạm không nằm trên mặt phẳng hợp lệ thì bỏ qua
+    if (hits.isEmpty) return;
+
+    // Lấy điểm giao cắt đầu tiên (điểm tiếp xúc gần nhất với mặt sàn/bàn trong đời thực)
+    final hit = hits.first;
+    _addNodeAtHitPosition(hit);
+  }
+
+  /// Tạo node 3D và ghim cố định vào tọa độ không gian thực của điểm chạm
+  void _addNodeAtHitPosition(ArCoreHitTestResult hit) {
+    if (_arCoreController == null) return;
+
+    ArCoreNode node;
+
+    switch (_selectedShapeIndex) {
+      case 0:
+        // 1. Quả cầu kim loại Chrome phản chiếu ánh sáng môi trường phòng
+        final material = ArCoreMaterial(
+          color: Colors.cyanAccent,
+          metallic: 1.0,  // Tính chất kim loại tối đa
+          roughness: 0.1, // Độ nhám thấp -> phản quang sắc nét
+        );
+        final sphere = ArCoreSphere(
+          materials: [material],
+          radius: 0.12, // Bán kính 12 cm ngoài đời thực
+        );
+        node = ArCoreNode(
+          shape: sphere,
+          // Nâng nhẹ trục Y thêm 0.12m để tâm quả cầu nằm tiếp xúc ngay trên mặt phẳng sàn
+          position: hit.pose.translation + vector.Vector3(0, 0.12, 0),
+          rotation: hit.pose.rotation,
+        );
+        break;
+
+      case 1:
+        // 2. Khối lập phương vàng Gold sang trọng
+        final material = ArCoreMaterial(
+          color: Colors.amber,
+          metallic: 0.9,
+          roughness: 0.2,
+        );
+        final cube = ArCoreCube(
+          materials: [material],
+          size: vector.Vector3(0.2, 0.2, 0.2), // Kích thước mỗi cạnh 20 cm
+        );
+        node = ArCoreNode(
+          shape: cube,
+          // Nâng trục Y 0.1m để đáy khối lập phương đặt phẳng lên sàn
+          position: hit.pose.translation + vector.Vector3(0, 0.1, 0),
+          rotation: hit.pose.rotation,
+        );
+        break;
+
+      case 2:
+        // 3. Khối trụ Ruby đỏ
+        final material = ArCoreMaterial(
+          color: Colors.redAccent,
+          metallic: 0.8,
+          roughness: 0.3,
+        );
+        final cylinder = ArCoreCylinder(
+          materials: [material],
+          radius: 0.1,
+          height: 0.25, // Cao 25 cm
+        );
+        node = ArCoreNode(
+          shape: cylinder,
+          position: hit.pose.translation + vector.Vector3(0, 0.125, 0),
+          rotation: hit.pose.rotation,
+        );
+        break;
+
+      case 3:
+      default:
+        // 4. Mô hình 3D thực tế (Phi hành gia - Astronaut.glb)
+        node = ArCoreReferenceNode(
+          name: "Astronaut_${DateTime.now().millisecondsSinceEpoch}",
+          objectUrl: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+          position: hit.pose.translation,
+          rotation: hit.pose.rotation,
+          scale: vector.Vector3(0.25, 0.25, 0.25), // Thu nhỏ tỷ lệ để vừa vặn mặt bàn
+        );
+        break;
     }
-    if (state == AppLifecycleState.inactive) {
-      cameraController.dispose();
-      _gyroSubscription?.pause();
-    } else if (state == AppLifecycleState.resumed) {
-      _initCamera();
-      _gyroSubscription?.resume();
-    }
-  }
 
-  // Nạp lại tọa độ đã ghim trước đó từ SharedPreferences (nếu có)
-  Future<void> _loadSavedAnchor() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedX = prefs.getDouble('ar_anchor_x');
-    final savedY = prefs.getDouble('ar_anchor_y');
-    final savedScale = prefs.getDouble('ar_scale');
-    final savedModel = prefs.getInt('ar_model_index');
+    // [CỐT LÕI 6DoF]: Ghim cứng vật thể vào tọa độ thế giới thông qua Anchor của ARCore.
+    // Anchor đảm bảo khi camera di chuyển ra xa hay đi vòng lại phía sau,
+    // vật thể vẫn đứng im tuyệt đối tại điểm tiếp xúc thực tế.
+    _arCoreController?.addArCoreNodeWithAnchor(node);
 
-    if (savedX != null && savedY != null && mounted) {
-      setState(() {
-        _baseAnchorOffset = Offset(savedX, savedY);
-        if (savedScale != null) _modelScale = savedScale;
-        if (savedModel != null && savedModel < _models.length) {
-          _selectedModelIndex = savedModel;
-        }
-      });
-    }
-  }
-
-  // Lưu vị trí ghim hiện tại vào SharedPreferences
-  Future<void> _saveCurrentAnchor() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('ar_anchor_x', _baseAnchorOffset.dx);
-    await prefs.setDouble('ar_anchor_y', _baseAnchorOffset.dy);
-    await prefs.setDouble('ar_scale', _modelScale);
-    await prefs.setInt('ar_model_index', _selectedModelIndex);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('📍 Đã lưu vị trí ghim vào bộ nhớ máy! Lần sau mở app sẽ tự phục hồi.'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  // Khởi động con quay hồi chuyển để bù trừ góc lia máy (World Anchoring)
-  void _startGyroTracking() {
-    _gyroSubscription = gyroscopeEventStream().listen((GyroscopeEvent event) {
-      if (!_isGyroTrackingEnabled) return;
-
-      final now = DateTime.now();
-      if (_lastGyroTimestamp == null) {
-        _lastGyroTimestamp = now;
-        return;
-      }
-
-      final dt = now.difference(_lastGyroTimestamp!).inMicroseconds / 1000000.0;
-      _lastGyroTimestamp = now;
-
-      // Giới hạn dt hợp lệ (tránh nhảy đột ngột)
-      if (dt > 0.1) return;
-
-      setState(() {
-        // Gyroscope:
-        // event.y: Xoay quanh trục Y (quay điện thoại sang trái/phải)
-        // event.x: Xoay quanh trục X (ngửa/chúc điện thoại)
-        _currentPanX += event.y * dt;
-        _currentPanY += event.x * dt;
-
-        // Giới hạn góc nhìn trong phạm vi hợp lý quanh điểm ghim
-        _currentPanX = _currentPanX.clamp(-math.pi, math.pi);
-        _currentPanY = _currentPanY.clamp(-math.pi / 2, math.pi / 2);
-      });
-    });
-  }
-
-  // Đặt lại điểm gốc con quay về hướng điện thoại đang chỉ
-  void _recenterGyroAnchor() {
     setState(() {
-      _currentPanX = 0.0;
-      _currentPanY = 0.0;
-      _baseAnchorOffset = Offset.zero;
+      _placedObjectsCount++;
     });
+
+    // Thông báo gợi ý người dùng trải nghiệm di chuyển vòng quanh
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🎯 Đã ghim vật thể tại hướng nhìn camera hiện tại!'),
-        duration: Duration(milliseconds: 1500),
+      SnackBar(
+        content: Text(
+          '🎯 Đã ghim ${_shapeNames[_selectedShapeIndex]} vào mặt sàn! Bạn hãy bước đi vòng quanh để ngắm nhìn.',
+        ),
+        backgroundColor: Colors.green[800],
+        duration: const Duration(milliseconds: 2000),
       ),
     );
   }
 
-  Future<void> _initCamera() async {
-    final status = await Permission.camera.request();
-    if (!status.isGranted) {
-      setState(() {
-        _isPermissionDenied = true;
-      });
-      return;
-    }
-
-    try {
-      _cameras = await availableCameras();
-      if (_cameras.isEmpty) {
-        setState(() {
-          _isPermissionDenied = true;
-        });
-        return;
-      }
-      await _setupCameraController(_cameras[_selectedCameraIndex]);
-    } catch (e) {
-      debugPrint("Lỗi khởi tạo Camera: $e");
-      setState(() {
-        _isPermissionDenied = true;
-      });
-    }
-  }
-
-  Future<void> _setupCameraController(CameraDescription camera) async {
-    _cameraController?.dispose();
-    final controller = CameraController(
-      camera,
-      ResolutionPreset.high,
-      enableAudio: false,
+  /// Xóa toàn bộ các vật thể đã ghim bằng cách tái khởi động phiên AR
+  void _clearAllNodes() {
+    setState(() {
+      _placedObjectsCount = 0;
+    });
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const ArViewScreen()),
     );
-
-    try {
-      await controller.initialize();
-      if (!mounted) return;
-      setState(() {
-        _cameraController = controller;
-        _isCameraInitialized = true;
-        _isPermissionDenied = false;
-      });
-    } catch (e) {
-      debugPrint("Lỗi setup controller: $e");
-    }
-  }
-
-  void _switchCamera() {
-    if (_cameras.length < 2) return;
-    _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
-    _setupCameraController(_cameras[_selectedCameraIndex]);
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentModel = _models[_selectedModelIndex];
-
-    // Tính toán tọa độ thực tế của vật thể:
-    // Tọa độ người dùng đặt + độ lệch bù trừ khi lia điện thoại qua cảm biến Gyroscope
-    final double gyroShiftX = _isGyroTrackingEnabled ? -(_currentPanX * _fovFactor) : 0.0;
-    final double gyroShiftY = _isGyroTrackingEnabled ? (_currentPanY * _fovFactor) : 0.0;
-    final Offset totalOffset = Offset(
-      _baseAnchorOffset.dx + gyroShiftX,
-      _baseAnchorOffset.dy + gyroShiftY,
-    );
-
     return Scaffold(
-      backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black.withValues(alpha: 0.6),
+        title: const Text('ARCore Native Space Studio'),
+        backgroundColor: Colors.black87,
         foregroundColor: Colors.white,
-        title: const Text('AR World Anchor Studio'),
         actions: [
-          // Nút bật/tắt ghim cảm biến
-          IconButton(
-            icon: Icon(
-              _isGyroTrackingEnabled ? Icons.explore : Icons.explore_off,
-              color: _isGyroTrackingEnabled ? Colors.amber : Colors.white60,
-            ),
-            tooltip: _isGyroTrackingEnabled
-                ? 'Đang bật Ghim không gian thực'
-                : 'Đang tắt Ghim không gian',
-            onPressed: () {
-              setState(() {
-                _isGyroTrackingEnabled = !_isGyroTrackingEnabled;
-              });
-            },
-          ),
-          // Nút lưu vị trí vào máy
-          IconButton(
-            icon: const Icon(Icons.bookmark_add_outlined),
-            tooltip: 'Lưu vị trí ghim',
-            onPressed: _saveCurrentAnchor,
-          ),
-          if (_cameras.length > 1)
+          // Nút dọn dẹp các vật thể đã đặt trên sàn
+          if (_placedObjectsCount > 0)
             IconButton(
-              icon: const Icon(Icons.flip_camera_ios),
-              tooltip: 'Đổi Camera trước/sau',
-              onPressed: _switchCamera,
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Xóa các vật thể đã đặt',
+              onPressed: _clearAllNodes,
             ),
         ],
       ),
       body: Stack(
         children: [
-          // 1. Tầng Camera Stream thời gian thực
-          Positioned.fill(
-            child: _buildCameraLayer(),
+          // 1. Màn hình camera ARCore Native thực thụ
+          // Hiển thị lưới chấm li ti (Feature points) khi nhận diện được mặt phẳng sàn/bàn
+          ArCoreView(
+            onArCoreViewCreated: _onArCoreViewCreated,
+            enablePlaneRenderer: true, // Bật chế độ quét và hiển thị lưới mặt phẳng sàn/bàn
+            enableTapRecognizer: true, // Bật tính năng nhận diện cử chỉ chạm vào mặt sàn
           ),
 
-          // 2. Chạm vào màn hình để đặt vị trí (Touch to Place Anchor)
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTapUp: (details) {
-                final size = MediaQuery.of(context).size;
-                setState(() {
-                  // Chạm vào đâu ghim vật thể tại hướng đó
-                  _baseAnchorOffset = Offset(
-                    details.localPosition.dx - (size.width / 2) - gyroShiftX,
-                    details.localPosition.dy - (size.height / 2) - gyroShiftY,
-                  );
-                });
-              },
-            ),
-          ),
-
-          // 3. Tầng Vật thể 3D AR nổi trên nền Camera
-          Center(
-            child: Transform.translate(
-              offset: totalOffset,
-              child: Transform.scale(
-                scale: _modelScale,
-                child: SizedBox(
-                  width: 320,
-                  height: 380,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Mô hình 3D trong suốt
-                      ModelViewer(
-                        key: ValueKey('${currentModel['url']}-$_autoRotate'),
-                        src: currentModel['url']!,
-                        alt: currentModel['title']!,
-                        ar: false,
-                        autoRotate: _autoRotate,
-                        cameraControls: true,
-                        backgroundColor: Colors.transparent,
-                      ),
-
-                      // Bệ định vị Anchor màu vàng
-                      Positioned(
-                        bottom: 12,
-                        child: GestureDetector(
-                          onPanUpdate: (details) {
-                            setState(() {
-                              _baseAnchorOffset += details.delta;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.withValues(alpha: 0.9),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.amber.withValues(alpha: 0.5),
-                                  blurRadius: 10,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _isGyroTrackingEnabled ? Icons.push_pin : Icons.open_with,
-                                  size: 15,
-                                  color: Colors.black87,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _isGyroTrackingEnabled ? 'Đã ghim không gian thực' : 'Kéo để di chuyển',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // 4. Banner hướng dẫn trạng thái ghim
+          // 2. Banner hiển thị hướng dẫn tương tác cho người dùng
           Positioned(
-            top: 12,
+            top: 16,
             left: 16,
             right: 16,
             child: IgnorePointer(
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: _isGyroTrackingEnabled ? Colors.amber.withValues(alpha: 0.5) : Colors.white24,
-                  ),
+                  color: Colors.black.withValues(alpha: 0.75),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.6)),
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      _isGyroTrackingEnabled ? Icons.explore : Icons.touch_app,
-                      color: Colors.amber,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 10),
+                    const Icon(Icons.screen_search_desktop, color: Colors.amber, size: 24),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        _isGyroTrackingEnabled
-                            ? 'Con quay hồi chuyển BẬT: Lia camera qua lại vật thể vẫn đứng yên chỗ cũ trong phòng.'
-                            : 'Ghim TẮT: Chạm hoặc kéo để chỉnh vị trí tự do.',
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        _placedObjectsCount == 0
+                            ? 'Lia camera từ từ xuống mặt sàn/mặt bàn cho đến khi hiện lưới chấm li ti → Chạm vào sàn để ghim vật thể.'
+                            : 'Đã ghim $_placedObjectsCount vật thể! Cầm máy bước lại gần hoặc đi vòng xung quanh để ngắm từ mọi góc.',
+                        style: const TextStyle(color: Colors.white, fontSize: 13),
                       ),
                     ),
                   ],
@@ -409,164 +225,67 @@ class _ArViewScreenState extends State<ArViewScreen> with WidgetsBindingObserver
             ),
           ),
 
-          // 5. Thanh chọn mô hình ở trên cùng
-          Positioned(
-            top: 60,
-            left: 0,
-            right: 0,
-            child: SizedBox(
-              height: 44,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                scrollDirection: Axis.horizontal,
-                itemCount: _models.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final isSelected = index == _selectedModelIndex;
-                  return ChoiceChip(
-                    label: Text(
-                      _models[index]['title']!.split('(').first.trim(),
-                      style: TextStyle(
-                        color: isSelected ? Colors.black : Colors.white,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 12,
-                      ),
-                    ),
-                    selected: isSelected,
-                    selectedColor: Colors.amber,
-                    backgroundColor: Colors.black54,
-                    onSelected: (_) {
-                      setState(() {
-                        _selectedModelIndex = index;
-                      });
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-
-          // 6. Thanh điều khiển kích thước & ghim lại ở dưới cùng
+          // 3. Thanh Dock phía dưới để chọn loại mô hình/hình khối trước khi chạm đặt
           Positioned(
             bottom: 24,
             left: 16,
             right: 16,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: Colors.white24),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Thu nhỏ
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline, color: Colors.white),
-                    tooltip: 'Thu nhỏ',
-                    onPressed: () {
-                      setState(() {
-                        if (_modelScale > 0.4) _modelScale -= 0.15;
-                      });
-                    },
-                  ),
-                  // Phóng to
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-                    tooltip: 'Phóng to',
-                    onPressed: () {
-                      setState(() {
-                        if (_modelScale < 2.5) _modelScale += 0.15;
-                      });
-                    },
-                  ),
-                  // Bật/tắt xoay
-                  IconButton(
-                    icon: Icon(
-                      _autoRotate ? Icons.pause_circle : Icons.play_circle,
-                      color: Colors.amber,
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4, bottom: 8),
+                    child: Text(
+                      'Chọn vật thể để chạm đặt lên sàn:',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                    tooltip: _autoRotate ? 'Dừng xoay' : 'Tự xoay',
-                    onPressed: () {
-                      setState(() {
-                        _autoRotate = !_autoRotate;
-                      });
-                    },
                   ),
-                  // Nút Ghim lại tại tâm camera hiện tại
-                  IconButton(
-                    icon: const Icon(Icons.my_location, color: Colors.amber),
-                    tooltip: 'Ghim tại hướng hiện tại',
-                    onPressed: _recenterGyroAnchor,
-                  ),
-                  // Nút Lưu vị trí
-                  IconButton(
-                    icon: const Icon(Icons.save_outlined, color: Colors.white),
-                    tooltip: 'Lưu vị trí này',
-                    onPressed: _saveCurrentAnchor,
+                  SizedBox(
+                    height: 40,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _shapeNames.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        final isSelected = index == _selectedShapeIndex;
+                        return ChoiceChip(
+                          label: Text(
+                            _shapeNames[index],
+                            style: TextStyle(
+                              color: isSelected ? Colors.black : Colors.white,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 12,
+                            ),
+                          ),
+                          selected: isSelected,
+                          selectedColor: Colors.amber,
+                          backgroundColor: Colors.white10,
+                          onSelected: (_) {
+                            setState(() {
+                              _selectedShapeIndex = index;
+                            });
+                          },
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCameraLayer() {
-    if (_isPermissionDenied) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.camera_alt_outlined, color: Colors.white54, size: 64),
-              const SizedBox(height: 16),
-              const Text(
-                'Ứng dụng cần quyền Camera để hiển thị không gian AR.',
-                style: TextStyle(color: Colors.white, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-                icon: const Icon(Icons.settings, color: Colors.black),
-                label: const Text('Mở cài đặt cấp quyền', style: TextStyle(color: Colors.black)),
-                onPressed: () => openAppSettings(),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (!_isCameraInitialized || _cameraController == null) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.amber),
-            SizedBox(height: 16),
-            Text(
-              'Đang khởi động Camera AR & Cảm biến...',
-              style: TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return SizedBox.expand(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: _cameraController!.value.previewSize?.height ?? 1080,
-          height: _cameraController!.value.previewSize?.width ?? 1920,
-          child: CameraPreview(_cameraController!),
-        ),
       ),
     );
   }
