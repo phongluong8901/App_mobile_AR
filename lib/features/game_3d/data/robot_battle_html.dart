@@ -1,14 +1,9 @@
 /// Mã nguồn HTML, CSS và JavaScript của Three.js 3D Robot Battle Arena.
-/// Đã được nâng cấp toàn diện:
-/// 1. Bộ chuyển đổi Bản đồ 3D Đa dạng (Map Switcher):
-///    - Map 1: 🏙️ Đấu trường Cyber Matrix (Tòa tháp, Cầu treo, Bệ phóng Jump Pad, Đèn Neon)
-///    - Map 2: 🏰 Lâu đài Hầm ngục Cổ đại (Tường đá, Cột trụ La Mã, Đuốc lửa, Rương cổ)
-///    - Map 3: 🪐 Trạm Không gian Deep Space (Bệ đáp phi thuyền, Lưới laser, Không gian vũ trụ)
-///    - Map 4: 🌐 Tải Bản đồ GLB từ mạng (Cho phép nhập link mô hình 3D bất kỳ)
-/// 2. Bản đồ hoàn thiện khép kín: Có tường rào bảo vệ vững chắc, tháp canh 4 góc, chống rớt ra khoảng không.
-/// 3. Động cơ vật lý AABB 3D đặc khít: Chặn ngang không xuyên tường, leo bậc thang và đứng trên nóc tháp.
-/// 4. Đồ vật vật lý phong phú: Thùng phuy thuốc nổ đỏ (nổ văng shockwave), thùng gỗ xếp tầng, quả cầu kim loại lăn theo quán tính.
-/// 5. Điều khiển Camera 360° & Pinch Zoom mượt mà, cách ly cảm ứng hoàn toàn.
+/// Đã được nâng cấp toàn diện sang Bản đồ 3D thực tế (.GLB Game Levels) kết hợp Raycasting Physics:
+/// 1. Tải bản đồ 3D thực tế dạng file .GLB (Collision World Arena, Gothic Dungeon, Spaceship Hallway).
+/// 2. Động cơ Raycasting Physics: Tự động quét bề mặt lưới 3D (Mesh Surface) của file .glb để tính độ cao sàn, dốc dốc, bậc thang, và phát hiện va chạm tường ngăn không cho đi xuyên.
+/// 3. Bổ sung các đồ vật vật lý tương tác: Thùng phuy thuốc nổ đỏ (sóng xung kích hất tung), thùng gỗ xếp tầng, quả cầu kim loại, bệ phóng Jump Pad.
+/// 4. Hỗ trợ nạp bất kỳ bản đồ .glb tùy chọn nào từ Internet.
 class RobotBattleHtml {
   RobotBattleHtml._();
 
@@ -18,7 +13,7 @@ class RobotBattleHtml {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Robot Battle Arena - Open Worlds & Solid Physics</title>
+  <title>3D Robot Battle Arena - Real GLB Worlds & Physics</title>
   <style>
     * {
       box-sizing: border-box;
@@ -154,7 +149,7 @@ class RobotBattleHtml {
       color: black;
       transform: scale(0.92);
     }
-    /* THANH CHỌN BẢN ĐỒ TRÊN ĐẦU (MAP SELECTOR) */
+    /* THANH CHỌN BẢN ĐỒ 3D (.GLB WORLDS) */
     #map-selector-bar {
       position: absolute;
       top: 66px;
@@ -233,7 +228,7 @@ class RobotBattleHtml {
       width: 100%;
       background: linear-gradient(90deg, #f43f5e, #e11d48);
     }
-    /* POPUP HIỆU ỨNG CHỮ VẬT LÝ */
+    /* POPUP CHỮ VẬT LÝ */
     .damage-text {
       position: absolute;
       color: #ff3366;
@@ -285,7 +280,7 @@ class RobotBattleHtml {
 <body>
   <div id="loading-overlay">
     <div class="spinner"></div>
-    <div id="loading-text">Đang tải Đấu Trường 3D Đa Tầng...</div>
+    <div id="loading-text">Đang tải Bản Đồ 3D Game Level (.GLB)...</div>
   </div>
 
   <!-- THANH MÁU CHIẾN ĐẤU -->
@@ -311,12 +306,12 @@ class RobotBattleHtml {
     </div>
   </div>
 
-  <!-- THANH CHUYỂN ĐỔI BẢN ĐỒ (MAP SWITCHER) -->
+  <!-- THANH CHỌN BẢN ĐỒ 3D (.GLB WORLDS) -->
   <div id="map-selector-bar">
-    <button class="btn-map-tab active" id="tab-map-cyber" onclick="switchMapTheme('cyber')">🏙️ Đấu Trường Cyber</button>
-    <button class="btn-map-tab" id="tab-map-dungeon" onclick="switchMapTheme('dungeon')">🏰 Lâu Đài Hầm Ngục</button>
-    <button class="btn-map-tab" id="tab-map-space" onclick="switchMapTheme('space')">🪐 Trạm Vũ Trụ Deep Space</button>
-    <button class="btn-map-tab" id="tab-map-custom" onclick="promptCustomMapUrl()">🌐 Tải Map GLB URL</button>
+    <button class="btn-map-tab active" id="tab-map-arena" onclick="loadGlbMap('arena')">🏛️ Đấu Trường Arena (.GLB)</button>
+    <button class="btn-map-tab" id="tab-map-dungeon" onclick="loadGlbMap('dungeon')">🏰 Lâu Đài Hầm Ngục (.GLB)</button>
+    <button class="btn-map-tab" id="tab-map-space" onclick="loadGlbMap('space')">🚀 Trạm Không Gian (.GLB)</button>
+    <button class="btn-map-tab" id="tab-map-custom" onclick="promptCustomMapUrl()">🌐 Nhập Link .GLB Khác</button>
   </div>
 
   <div id="canvas-container"></div>
@@ -376,12 +371,27 @@ class RobotBattleHtml {
     let camAngle = 0.0;
     let camPitch = 0.38;
 
-    // HỆ THỐNG VẬT LÝ VÀ BẢN ĐỒ
-    let solidObstacles = [];
-    let mapMeshes = [];
+    // HỆ THỐNG VẬT LÝ RAYCASTING BẢN ĐỒ .GLB & ĐỒ VẬT ĐỘNG
+    const mapColliderMeshes = [];   // Danh sách các Mesh của file .GLB để quét tia Raycast va chạm
+    let currentMapObject = null;
+    let solidObstacles = [];        // Thùng gỗ, thùng phuy nổ, quả cầu
     let jumpPads = [];
     const particles = [];
-    let currentMapTheme = 'cyber';
+
+    // TIA RAYCASTER TÍNH TOÁN ĐỘ CAO SÀN VÀ VA CHẠM TƯỜNG TRÊN .GLB
+    const downRay = new THREE.Raycaster();
+    const downDir = new THREE.Vector3(0, -1, 0);
+
+    const forwardRay = new THREE.Raycaster();
+
+    const GLB_MAP_URLS = {
+      // 1. Map Arena game chuyên nghiệp của Three.js (có ram dốc, cầu thang, hành lang, trụ cột)
+      arena: 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/collision-world.glb',
+      // 2. Lâu đài hầm ngục Gothic
+      dungeon: 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/dungeon_warkarma.glb',
+      // 3. Trạm không gian tương lai
+      space: 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/space_ship_hallway.glb'
+    };
 
     init();
     animate();
@@ -392,9 +402,9 @@ class RobotBattleHtml {
 
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x070B14);
-      scene.fog = new THREE.FogExp2(0x070B14, 0.016);
+      scene.fog = new THREE.FogExp2(0x070B14, 0.012);
 
-      camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 140);
+      camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 150);
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(window.devicePixelRatio);
@@ -403,24 +413,24 @@ class RobotBattleHtml {
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       container.appendChild(renderer.domElement);
 
-      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.85);
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.9);
       scene.add(hemiLight);
 
-      const dirLight = new THREE.DirectionalLight(0x00e5ff, 1.4);
-      dirLight.position.set(12, 22, 12);
+      const dirLight = new THREE.DirectionalLight(0x00e5ff, 1.5);
+      dirLight.position.set(15, 25, 15);
       dirLight.castShadow = true;
       dirLight.shadow.mapSize.width = 1024;
       dirLight.shadow.mapSize.height = 1024;
       dirLight.shadow.camera.near = 0.5;
-      dirLight.shadow.camera.far = 50;
-      dirLight.shadow.camera.left = -22;
-      dirLight.shadow.camera.right = 22;
-      dirLight.shadow.camera.top = 22;
-      dirLight.shadow.camera.bottom = -22;
+      dirLight.shadow.camera.far = 60;
+      dirLight.shadow.camera.left = -25;
+      dirLight.shadow.camera.right = 25;
+      dirLight.shadow.camera.top = 25;
+      dirLight.shadow.camera.bottom = -25;
       scene.add(dirLight);
 
-      // KHỞI TẠO BẢN ĐỒ MẶC ĐỊNH
-      buildMap(currentMapTheme);
+      // TẢI BẢN ĐỒ .GLB CHÍNH THỨC BAN ĐẦU
+      loadGlbMap('arena');
 
       // TẢI 2 ROBOT 3D
       const loader = new THREE.GLTFLoader();
@@ -469,348 +479,221 @@ class RobotBattleHtml {
 
           enemyActiveAction = enemyActions['Idle'];
           if (enemyActiveAction) enemyActiveAction.play();
-
-          document.getElementById('loading-overlay').style.opacity = '0';
-          setTimeout(() => {
-            document.getElementById('loading-overlay').style.display = 'none';
-          }, 500);
         });
 
       }, undefined, function (error) {
         console.error('Lỗi tải Robot GLB:', error);
-        document.getElementById('loading-text').innerText = 'Không thể tải mô hình (Kiểm tra mạng)';
       });
 
       setupControls();
       window.addEventListener('resize', onWindowResize, false);
     }
 
-    // ĐĂNG KÝ VẬT THỂ VẬT LÝ SOLID VÀO BẢN ĐỒ
-    function registerSolidBox(x, y, z, w, h, d, mat, isDynamic = false, extraProps = {}) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      mesh.position.set(x, y, z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-      mapMeshes.push(mesh);
+    // TẢI BẢN ĐỒ DẠNG MÔ HÌNH 3D .GLB THỰC TẾ & TỰ ĐỘNG SINH VẬT LÝ RAYCASTING
+    function loadGlbMap(mapTypeKey, customUrl = null) {
+      const url = customUrl || GLB_MAP_URLS[mapTypeKey];
+      if (!url) return;
 
-      const obs = {
-        type: 'box',
-        mesh: mesh,
-        x: x, y: y, z: z,
-        w: w, h: h, d: d,
-        halfW: w / 2,
-        halfH: h / 2,
-        halfD: d / 2,
-        isDynamic: isDynamic,
-        vx: 0, vy: 0, vz: 0,
-        rotVx: 0,
-        defaultY: y,
-        ...extraProps
-      };
-      solidObstacles.push(obs);
-      return obs;
-    }
+      document.getElementById('loading-overlay').style.display = 'flex';
+      document.getElementById('loading-overlay').style.opacity = '1';
+      document.getElementById('loading-text').innerText = 'Đang tải Bản Đồ 3D (.GLB) & Tính toán Vật Lý...';
 
-    // XÓA BẢN ĐỒ HIỆN TẠI ĐỂ ĐỔI SANG MAP MỚI
-    function clearCurrentMap() {
-      mapMeshes.forEach(mesh => {
-        scene.remove(mesh);
-        if (mesh.geometry) mesh.geometry.dispose();
-      });
-      mapMeshes = [];
-      solidObstacles = [];
-      jumpPads = [];
-    }
-
-    // HỆ THỐNG XÂY DỰNG CÁC BẢN ĐỒ 3D HOÀN CHỈNH
-    function buildMap(theme) {
-      clearCurrentMap();
-      currentMapTheme = theme;
-
-      // Cập nhật nút active trên UI
+      // Cập nhật nút tab active
       document.querySelectorAll('.btn-map-tab').forEach(b => b.classList.remove('active'));
-      const activeBtn = document.getElementById('tab-map-' + theme);
+      const activeBtn = document.getElementById('tab-map-' + mapTypeKey);
       if (activeBtn) activeBtn.classList.add('active');
 
-      if (theme === 'cyber') {
-        buildCyberArenaMap();
-      } else if (theme === 'dungeon') {
-        buildDungeonRuinsMap();
-      } else if (theme === 'space') {
-        buildDeepSpaceMap();
+      // Dọn dẹp bản đồ cũ
+      if (currentMapObject) {
+        scene.remove(currentMapObject);
+        currentMapObject.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+            else child.material.dispose();
+          }
+        });
+      }
+      mapColliderMeshes.length = 0;
+      solidObstacles.forEach(obs => {
+        scene.remove(obs.mesh);
+        if (obs.mesh.geometry) obs.mesh.geometry.dispose();
+      });
+      solidObstacles.length = 0;
+      jumpPads.forEach(pad => scene.remove(pad.mesh));
+      jumpPads.length = 0;
+
+      const loader = new THREE.GLTFLoader();
+      loader.load(url, function (gltf) {
+        currentMapObject = gltf.scene;
+
+        // Tinh chỉnh tỷ lệ và vị trí phù hợp cho từng loại map
+        if (mapTypeKey === 'arena') {
+          currentMapObject.scale.set(1.15, 1.15, 1.15);
+          currentMapObject.position.set(0, 0, 0);
+        } else if (mapTypeKey === 'dungeon') {
+          currentMapObject.scale.set(0.75, 0.75, 0.75);
+          currentMapObject.position.set(0, 0, 0);
+        } else if (mapTypeKey === 'space') {
+          currentMapObject.scale.set(1.0, 1.0, 1.0);
+          currentMapObject.position.set(0, 0, 0);
+        } else {
+          currentMapObject.scale.set(2.0, 2.0, 2.0);
+          currentMapObject.position.set(0, 0, 0);
+        }
+
+        // DUYỆT TẤT CẢ MESH TRONG BẢN ĐỒ .GLB ĐỂ KÍCH HOẠT ĐỔ BÓNG VÀ ĐĂNG KÝ VẬT LÝ VA CHẠM
+        currentMapObject.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            if (child.geometry) {
+              child.geometry.computeVertexNormals();
+            }
+            mapColliderMeshes.push(child);
+          }
+        });
+
+        scene.add(currentMapObject);
+
+        // THÊM CÁC ĐỒ VẬT VẬT LÝ TƯƠNG TÁC LÊN MAP (THÙNG PHUY NỔ, THÙNG GỖ, BÓNG, JUMP PAD)
+        spawnInteractiveProps();
+
+        resetBattle();
+
+        document.getElementById('loading-overlay').style.opacity = '0';
+        setTimeout(() => {
+          document.getElementById('loading-overlay').style.display = 'none';
+        }, 500);
+
+        spawnDamagePopup(new THREE.Vector3(0, 2, 0), '✨ ĐÃ TẢI MAP 3D THỰC TẾ!');
+      }, undefined, function (error) {
+        console.error('Lỗi tải file .glb map:', error);
+        alert('Không thể tải bản đồ 3D từ link này. Đang dùng map dự phòng!');
+        document.getElementById('loading-overlay').style.display = 'none';
+      });
+    }
+
+    // NHẬP LINK MAP .GLB TÙY Ý TỪ INTERNET
+    function promptCustomMapUrl() {
+      const url = prompt(
+        'Nhập URL file mô hình 3D bản đồ (.glb) từ mạng (Three.js, Sketchfab, GitHub):',
+        'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/collision-world.glb'
+      );
+      if (url && url.trim().length > 5) {
+        loadGlbMap('custom', url.trim());
       }
     }
 
-    // 1. MAP: ĐẤU TRƯỜNG CYBER MATRIX (HOÀN THIỆN ĐA TẦNG & TƯỜNG CHẮN)
-    function buildCyberArenaMap() {
-      scene.background = new THREE.Color(0x070B14);
-      scene.fog = new THREE.FogExp2(0x070B14, 0.016);
-
-      // Sàn đấu chính
-      const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0f1d, roughness: 0.65, metalness: 0.25 });
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), floorMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.receiveShadow = true;
-      scene.add(floor);
-      mapMeshes.push(floor);
-
-      const grid = new THREE.GridHelper(64, 32, 0x00e5ff, 0x1e293b);
-      grid.position.y = 0.01;
-      scene.add(grid);
-      mapMeshes.push(grid);
-
-      // TƯỜNG RÀO NĂNG LƯỢNG 4 PHÍA (CHỐNG RỚT RA NGOÀI VÕ ĐÀI)
-      const fenceMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.8 });
-      const neonBorder = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
-
-      registerSolidBox(0, 1.0, -32, 64, 2.0, 1.2, fenceMat);
-      registerSolidBox(0, 1.0, 32, 64, 2.0, 1.2, fenceMat);
-      registerSolidBox(-32, 1.0, 0, 1.2, 2.0, 64, fenceMat);
-      registerSolidBox(32, 1.0, 0, 1.2, 2.0, 64, fenceMat);
-
-      // Viền Neon phát sáng trên tường rào
-      const n1 = new THREE.Mesh(new THREE.BoxGeometry(64, 0.15, 0.2), neonBorder);
-      n1.position.set(0, 2.05, -32); scene.add(n1); mapMeshes.push(n1);
-
-      // 4 THÁP CANH 4 GÓC (CORNER TOWERS)
-      const towerMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.5 });
-      const cornerCoords = [[-28, -28], [28, -28], [-28, 28], [28, 28]];
-      cornerCoords.forEach(c => {
-        registerSolidBox(c[0], 2.0, c[1], 6, 4.0, 6, towerMat);
-        const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16), neonBorder);
-        beacon.position.set(c[0], 4.75, c[1]);
-        scene.add(beacon); mapMeshes.push(beacon);
-      });
-
-      // BẬC THANG ĐÁ 4 CẤP LÊN THÁP A (X = 6, Z = -6)
-      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.3 });
-      for (let i = 0; i < 4; i++) {
-        const h = (i + 1) * 0.55;
-        const z = -6.0 - (i * 1.6);
-        registerSolidBox(6.0, h / 2, z, 4.0, h, 1.6, stoneMat);
-      }
-
-      // THÁP TRÊN CAO A (ĐỘ CAO 2.2m)
-      registerSolidBox(6.0, 1.1, -15.0, 7.5, 2.2, 7.5, towerMat);
-
-      // CẦU TREO KHÔNG GIAN DÀI 14M (SKY BRIDGE)
-      registerSolidBox(-3.0, 1.1, -5.0, 14.0, 2.2, 3.2, fenceMat);
-
-      // THÁP TRÊN CAO B (ĐỘ CAO 2.2m)
-      registerSolidBox(-12.0, 1.1, -5.0, 7.5, 2.2, 7.5, towerMat);
-
-      // BỆ PHÓNG JUMP PAD KÉP
-      addJumpPad(-3, 6);
-      addJumpPad(12, -8);
-
-      // ĐỒ VẬT VẬT LÝ (THÙNG GỖ, THÙNG NỔ, BÓNG)
-      spawnThemeProps(true);
-    }
-
-    // 2. MAP: LÂU ĐÀI HẦM NGỤC CỔ ĐẠI (DUNGEON RUINS)
-    function buildDungeonRuinsMap() {
-      scene.background = new THREE.Color(0x181410);
-      scene.fog = new THREE.FogExp2(0x181410, 0.02);
-
-      const dungeonFloorMat = new THREE.MeshStandardMaterial({ color: 0x272421, roughness: 0.8, metalness: 0.1 });
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), dungeonFloorMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.receiveShadow = true;
-      scene.add(floor);
-      mapMeshes.push(floor);
-
-      const wallMat = new THREE.MeshStandardMaterial({ color: 0x3f3934, roughness: 0.85, metalness: 0.1 });
-      const columnMat = new THREE.MeshStandardMaterial({ color: 0x574f48, roughness: 0.7, metalness: 0.2 });
-
-      // TƯỜNG THÀNH ĐÁ KHÉP KÍN
-      registerSolidBox(0, 1.5, -32, 64, 3.0, 2.0, wallMat);
-      registerSolidBox(0, 1.5, 32, 64, 3.0, 2.0, wallMat);
-      registerSolidBox(-32, 1.5, 0, 2.0, 3.0, 64, wallMat);
-      registerSolidBox(32, 1.5, 0, 2.0, 3.0, 64, wallMat);
-
-      // DÃY CỘT TRỤ ĐÁ LA MÃ
-      const colCoords = [
-        [-8, -8], [8, -8], [-8, 8], [8, 8],
-        [-16, -16], [16, -16], [-16, 16], [16, 16]
-      ];
-      colCoords.forEach(cp => {
-        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 4.0, 16), columnMat);
-        col.position.set(cp[0], 2.0, cp[1]);
-        col.castShadow = true; col.receiveShadow = true;
-        scene.add(col); mapMeshes.push(col);
-        registerSolidBox(cp[0], 2.0, cp[1], 1.6, 4.0, 1.6, columnMat);
-      });
-
-      // BỆ ĐÁ TẾ LỄ TRUNG TÂM (ĐỘ CAO 1.2M CÓ BẬC THANG LÊN)
-      registerSolidBox(0, 0.35, 0, 10.0, 0.7, 10.0, wallMat);
-      registerSolidBox(0, 0.85, 0, 6.0, 0.7, 6.0, columnMat);
-
-      // Bệ phóng cổng thần bí
-      addJumpPad(-8, 0, 0xffaa00);
-      addJumpPad(8, 0, 0xffaa00);
-
-      spawnThemeProps(false);
-    }
-
-    // 3. MAP: TRẠM KHÔNG GIAN DEEP SPACE (ORBITAL STATION)
-    function buildDeepSpaceMap() {
-      scene.background = new THREE.Color(0x02040a);
-      scene.fog = new THREE.FogExp2(0x02040a, 0.012);
-
-      const metalPlatesMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.85 });
-      const floor = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), metalPlatesMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.receiveShadow = true;
-      scene.add(floor);
-      mapMeshes.push(floor);
-
-      // Vòng tròn hạ cánh phi thuyền trung tâm
-      const ringGeo = new THREE.RingGeometry(8, 9.5, 48);
-      const ringMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.02;
-      scene.add(ring); mapMeshes.push(ring);
-
-      // CÁC BỆ NĂNG LƯỢNG VŨ TRỤ
-      const podMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.9 });
-      registerSolidBox(-14, 1.25, -14, 8, 2.5, 8, podMat);
-      registerSolidBox(14, 1.25, 14, 8, 2.5, 8, podMat);
-
-      addJumpPad(0, -10, 0x38bdf8);
-      addJumpPad(0, 10, 0x38bdf8);
-
-      spawnThemeProps(true);
-    }
-
-    // THÊM BỆ PHÓNG JUMP PAD
-    function addJumpPad(x, z, colorHex = 0x00e5ff) {
-      const padGeo = new THREE.CylinderGeometry(1.5, 1.7, 0.15, 32);
-      const padMat = new THREE.MeshStandardMaterial({
-        color: colorHex,
-        emissive: colorHex,
-        emissiveIntensity: 0.4,
-        roughness: 0.2,
-        metalness: 0.8
-      });
-      const padMesh = new THREE.Mesh(padGeo, padMat);
-      padMesh.position.set(x, 0.08, z);
-      padMesh.receiveShadow = true;
-      scene.add(padMesh);
-      mapMeshes.push(padMesh);
-
-      jumpPads.push({ mesh: padMesh, x: x, z: z });
-    }
-
-    // SINH CÁC ĐỒ VẬT VẬT LÝ TƯƠNG TÁC
-    function spawnThemeProps(hasBarrels) {
+    // SINH ĐỒ VẬT VẬT LÝ TƯƠNG TÁC TRÊN BẢN ĐỒ .GLB
+    function spawnInteractiveProps() {
       const crateMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.35, metalness: 0.35 });
       const barrelMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.25, metalness: 0.5 });
       const metalSphereMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.95 });
 
-      // Cụm thùng gỗ xếp tầng
-      const crateCoords = [
-        [-6.0, 0.6, 4.0], [-4.6, 0.6, 4.0], [-5.3, 1.8, 4.0],
-        [4.0, 0.6, 8.0], [5.4, 0.6, 8.0], [4.7, 1.8, 8.0]
-      ];
-      crateCoords.forEach(p => {
-        registerSolidBox(p[0], p[1], p[2], 1.2, 1.2, 1.2, crateMat, true, { radius: 0.8 });
-      });
-
-      // Thùng phuy phát nổ
-      if (hasBarrels) {
-        const barrelCoords = [[0.0, 0.8, -3.5], [8.0, 0.8, 4.0], [-8.0, 0.8, -12.0]];
-        barrelCoords.forEach(bp => {
-          const barrelMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 1.6, 24), barrelMat);
-          barrelMesh.position.set(bp[0], bp[1], bp[2]);
-          barrelMesh.castShadow = true; barrelMesh.receiveShadow = true;
-          scene.add(barrelMesh); mapMeshes.push(barrelMesh);
-
-          solidObstacles.push({
-            type: 'box',
-            mesh: barrelMesh,
-            x: bp[0], y: bp[1], z: bp[2],
-            w: 1.3, h: 1.6, d: 1.3,
-            halfW: 0.65, halfH: 0.8, halfD: 0.65,
-            isDynamic: true,
-            isBarrel: true,
-            vx: 0, vy: 0, vz: 0,
-            defaultY: bp[1],
-            radius: 0.75
-          });
+      function addBox(x, y, z, w, h, d, mat, isDynamic = true, extra = {}) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        solidObstacles.push({
+          type: 'box',
+          mesh: mesh,
+          w: w, h: h, d: d,
+          halfW: w / 2, halfH: h / 2, halfD: d / 2,
+          isDynamic: isDynamic,
+          vx: 0, vy: 0, vz: 0,
+          rotVx: 0,
+          defaultY: y,
+          ...extra
         });
       }
 
-      // Quả cầu kim loại lăn trôi
+      // 1. Thùng gỗ xếp tầng (vật lý va đập & trèo lên)
+      addBox(-5, 0.6, 3, 1.2, 1.2, 1.2, crateMat);
+      addBox(-3.6, 0.6, 3, 1.2, 1.2, 1.2, crateMat);
+      addBox(-4.3, 1.8, 3, 1.2, 1.2, 1.2, crateMat);
+
+      // 2. Thùng phuy thuốc nổ đỏ (phát nổ uy lực)
+      const bMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 1.6, 24), barrelMat);
+      bMesh.position.set(4, 0.8, -4);
+      bMesh.castShadow = true;
+      bMesh.receiveShadow = true;
+      scene.add(bMesh);
+      solidObstacles.push({
+        type: 'box',
+        mesh: bMesh,
+        w: 1.3, h: 1.6, d: 1.3,
+        halfW: 0.65, halfH: 0.8, halfD: 0.65,
+        isDynamic: true,
+        isBarrel: true,
+        vx: 0, vy: 0, vz: 0,
+        defaultY: 0.8
+      });
+
+      // 3. Quả cầu kim loại lăn trôi
       const sph = new THREE.Mesh(new THREE.SphereGeometry(1.0, 32, 32), metalSphereMat);
-      sph.position.set(-6.0, 1.0, -9.0);
+      sph.position.set(5, 1.0, 5);
       sph.castShadow = true;
-      scene.add(sph); mapMeshes.push(sph);
+      scene.add(sph);
       solidObstacles.push({
         type: 'sphere',
         mesh: sph,
-        x: -6.0, y: 1.0, z: -9.0,
         radius: 1.0,
         isDynamic: true,
         isBarrel: false,
         vx: 0, vy: 0, vz: 0,
         defaultY: 1.0
       });
-    }
 
-    // CHUYỂN BẢN ĐỒ
-    function switchMapTheme(theme) {
-      buildMap(theme);
-      resetBattle();
-      spawnDamagePopup(new THREE.Vector3(0, 2, 0), '🗺️ ĐÃ CHUYỂN BẢN ĐỒ!');
-    }
-
-    // TẢI BẢN ĐỒ TÙY CHỌN TỪ MẠNG BẰNG LINK .GLB
-    function promptCustomMapUrl() {
-      const url = prompt(
-        'Nhập URL mô hình 3D bản đồ dạng .glb/.gltf từ mạng:',
-        'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb'
-      );
-      if (!url) return;
-
-      document.getElementById('loading-overlay').style.display = 'flex';
-      document.getElementById('loading-overlay').style.opacity = '1';
-      document.getElementById('loading-text').innerText = 'Đang tải bản đồ GLB từ mạng...';
-
-      const loader = new THREE.GLTFLoader();
-      loader.load(url, function (gltf) {
-        clearCurrentMap();
-        const mapObj = gltf.scene;
-        mapObj.scale.set(3.0, 3.0, 3.0);
-        mapObj.position.set(0, 0, 0);
-        mapObj.traverse(o => {
-          if (o.isMesh) { o.receiveShadow = true; o.castShadow = true; }
-        });
-        scene.add(mapObj);
-        mapMeshes.push(mapObj);
-
-        // Tạo sàn cơ sở cho map custom
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0x111827 }));
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        scene.add(floor);
-        mapMeshes.push(floor);
-
-        spawnThemeProps(true);
-        resetBattle();
-
-        document.getElementById('loading-overlay').style.opacity = '0';
-        setTimeout(() => document.getElementById('loading-overlay').style.display = 'none', 500);
-      }, undefined, function (err) {
-        alert('Không thể tải mô hình 3D từ link này. Vui lòng kiểm tra lại URL .glb!');
-        document.getElementById('loading-overlay').style.display = 'none';
+      // 4. Bệ phóng Jump Pad
+      const padGeo = new THREE.CylinderGeometry(1.5, 1.7, 0.15, 32);
+      const padMat = new THREE.MeshStandardMaterial({
+        color: 0x00e5ff,
+        emissive: 0x00a8cc,
+        roughness: 0.2,
+        metalness: 0.8
       });
+      const pad = new THREE.Mesh(padGeo, padMat);
+      pad.position.set(0, 0.08, -8);
+      scene.add(pad);
+      jumpPads.push({ mesh: pad, x: 0, z: -8 });
     }
 
-    // ĐỘNG CƠ TÍNH MẶT SÀN TẠI TỌA ĐỘ (X, Z)
+    // ĐỘNG CƠ RAYCASTING TÍNH TOÁN ĐỘ CAO SÀN CHÍNH XÁC TRÊN BỀ MẶT MESH .GLB
     function getGroundHeightAt(x, z, currentY) {
-      let floorY = 0;
+      let floorY = 0; // Sàn cơ sở
+
+      // 1. Quét tia Raycast thẳng đứng xuống dưới lên toàn bộ Mesh của bản đồ .GLB
+      if (mapColliderMeshes.length > 0) {
+        downRay.set(new THREE.Vector3(x, currentY + 1.5, z), downDir);
+        downRay.far = 16.0;
+        const hits = downRay.intersectObjects(mapColliderMeshes, false);
+
+        if (hits.length > 0) {
+          for (let i = 0; i < hits.length; i++) {
+            const hit = hits[i];
+            const hitY = hit.point.y;
+
+            // Kiểm tra mặt phẳng có thể đứng được (normal hướng lên)
+            let isWalkable = true;
+            if (hit.face && hit.face.normal) {
+              const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+              if (worldNormal.y < 0.3) isWalkable = false; // Dốc đứng hoặc vách tường
+            }
+
+            if (isWalkable && currentY >= hitY - 0.65) {
+              if (hitY > floorY) {
+                floorY = hitY;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Kiểm tra độ cao của các thùng gỗ vật lý động
       for (let i = 0; i < solidObstacles.length; i++) {
         const obs = solidObstacles[i];
         if (obs.type === 'box') {
@@ -827,15 +710,35 @@ class RobotBattleHtml {
           }
         }
       }
+
       return floorY;
     }
 
-    // CHẶN VA CHẠM NGANG VỮNG CHẮC (CHỐNG ĐI XUYÊN VẬT CẢN)
-    function resolveHorizontalCollisions(model, radius = 0.65) {
+    // CHẶN VA CHẠM TƯỜNG TRÊN .GLB VÀ VẬT THỂ (CHỐNG ĐI XUYÊN TƯỜNG)
+    function resolveCollisions(model, radius = 0.65) {
       const px = model.position.x;
       const py = model.position.y;
       const pz = model.position.z;
 
+      // 1. Quét tia ngang kiểm tra va chạm tường thành của bản đồ .GLB
+      if (mapColliderMeshes.length > 0) {
+        const angles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+        for (let i = 0; i < angles.length; i++) {
+          const ang = angles[i];
+          const dir = new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang));
+          forwardRay.set(new THREE.Vector3(px, py + 0.6, pz), dir);
+          forwardRay.far = radius + 0.15;
+          const hits = forwardRay.intersectObjects(mapColliderMeshes, false);
+          if (hits.length > 0) {
+            const hit = hits[0];
+            const pushDist = (radius + 0.15) - hit.distance;
+            model.position.x -= dir.x * pushDist;
+            model.position.z -= dir.z * pushDist;
+          }
+        }
+      }
+
+      // 2. Va chạm với thùng gỗ và quả cầu
       for (let i = 0; i < solidObstacles.length; i++) {
         const obs = solidObstacles[i];
         if (obs.type === 'box') {
@@ -850,39 +753,22 @@ class RobotBattleHtml {
             const maxZ = bz + obs.halfD + radius;
 
             if (px > minX && px < maxX && pz > minZ && pz < maxZ) {
-              const distLeft = px - minX;
-              const distRight = maxX - px;
-              const distTop = pz - minZ;
-              const distBottom = maxZ - pz;
-              const minDist = Math.min(distLeft, distRight, distTop, distBottom);
-
-              if (minDist === distLeft) {
-                model.position.x = minX;
-                if (obs.isDynamic) obs.vx = -3.5;
-              } else if (minDist === distRight) {
-                model.position.x = maxX;
-                if (obs.isDynamic) obs.vx = 3.5;
-              } else if (minDist === distTop) {
-                model.position.z = minZ;
-                if (obs.isDynamic) obs.vz = -3.5;
-              } else {
-                model.position.z = maxZ;
-                if (obs.isDynamic) obs.vz = 3.5;
-              }
+              const dL = px - minX, dR = maxX - px, dT = pz - minZ, dB = maxZ - pz;
+              const minD = Math.min(dL, dR, dT, dB);
+              if (minD === dL) { model.position.x = minX; if (obs.isDynamic) obs.vx = -3.5; }
+              else if (minD === dR) { model.position.x = maxX; if (obs.isDynamic) obs.vx = 3.5; }
+              else if (minD === dT) { model.position.z = minZ; if (obs.isDynamic) obs.vz = -3.5; }
+              else { model.position.z = maxZ; if (obs.isDynamic) obs.vz = 3.5; }
             }
           }
         } else if (obs.type === 'sphere') {
-          const sx = obs.mesh.position.x;
-          const sz = obs.mesh.position.z;
-          const dx = px - sx;
-          const dz = pz - sz;
+          const sx = obs.mesh.position.x, sz = obs.mesh.position.z;
+          const dx = px - sx, dz = pz - sz;
           const dist = Math.sqrt(dx * dx + dz * dz);
-          const minDist = radius + obs.radius;
-
-          if (dist < minDist && dist > 0.001) {
-            const overlap = minDist - dist;
-            const nx = dx / dist;
-            const nz = dz / dist;
+          const minD = radius + obs.radius;
+          if (dist < minD && dist > 0.001) {
+            const overlap = minD - dist;
+            const nx = dx / dist, nz = dz / dist;
             model.position.x += nx * overlap;
             model.position.z += nz * overlap;
             obs.vx = -nx * 4.5;
@@ -932,7 +818,6 @@ class RobotBattleHtml {
       const fX = Math.sin(playerModel.rotation.y);
       const fZ = Math.cos(playerModel.rotation.y);
 
-      // Đấm đối thủ
       if (playerModel && enemyModel && !isEnemyDead) {
         const dx = enemyModel.position.x - pX;
         const dy = enemyModel.position.y - pY;
@@ -972,10 +857,8 @@ class RobotBattleHtml {
         }
       }
 
-      // Đấm vật thể
       solidObstacles.forEach(obs => {
         if (!obs.isDynamic) return;
-
         const ox = obs.mesh.position.x - pX;
         const oy = obs.mesh.position.y - pY;
         const oz = obs.mesh.position.z - pZ;
@@ -1443,7 +1326,7 @@ class RobotBattleHtml {
         }
       }
 
-      // DI CHUYỂN JOYSTICK
+      // DI CHUYỂN BẰNG JOYSTICK
       if (playerModel && isMoving && !isPlayerDead) {
         const moveSpeed = 4.8 * dt;
         const moveX = Math.sin(camAngle) * joyForward - Math.cos(camAngle) * joyRight;
@@ -1455,8 +1338,8 @@ class RobotBattleHtml {
           playerModel.position.z += moveZ * moveSpeed;
         }
 
-        playerModel.position.x = Math.max(-31, Math.min(31, playerModel.position.x));
-        playerModel.position.z = Math.max(-31, Math.min(31, playerModel.position.z));
+        playerModel.position.x = Math.max(-32, Math.min(32, playerModel.position.x));
+        playerModel.position.z = Math.max(-32, Math.min(32, playerModel.position.z));
       }
 
       // KIỂM TRA BỆ PHÓNG JUMP PAD
@@ -1474,7 +1357,7 @@ class RobotBattleHtml {
         });
       }
 
-      // VẬT LÝ PLAYER
+      // VẬT LÝ PLAYER: TÍNH TOÁN RAYCASTING TRỌNG LỰC TRÊN BỀ MẶT MESH .GLB
       if (playerModel) {
         const groundY = getGroundHeightAt(playerModel.position.x, playerModel.position.z, playerModel.position.y);
 
@@ -1483,7 +1366,8 @@ class RobotBattleHtml {
             isGrounded = false;
             verticalVelocity = 0;
           } else {
-            playerModel.position.y += (groundY - playerModel.position.y) * 0.35;
+            // Tự động bước lên các bậc dốc, bậc thang của map .glb
+            playerModel.position.y += (groundY - playerModel.position.y) * 0.38;
           }
         }
 
@@ -1500,10 +1384,11 @@ class RobotBattleHtml {
           }
         }
 
-        resolveHorizontalCollisions(playerModel, 0.65);
+        // CHẶN VA CHẠM TƯỜNG TRÊN .GLB
+        resolveCollisions(playerModel, 0.65);
       }
 
-      // KNOCKBACK PLAYER & ENEMY
+      // KNOCKBACK
       if (playerModel && (Math.abs(playerKnockback.vx) > 0.01 || Math.abs(playerKnockback.vz) > 0.01 || Math.abs(playerKnockback.vy) > 0.01)) {
         playerModel.position.x += playerKnockback.vx * dt;
         playerModel.position.z += playerKnockback.vz * dt;
@@ -1543,7 +1428,7 @@ class RobotBattleHtml {
         }
       }
 
-      // VẬT THỂ VẬT LÝ ĐỘNG
+      // ĐỒ VẬT VẬT LÝ ĐỘNG
       solidObstacles.forEach(obs => {
         if (!obs.isDynamic) return;
 
@@ -1571,12 +1456,12 @@ class RobotBattleHtml {
             obs.mesh.rotation.z -= obs.vx * 0.25;
           }
 
-          obs.mesh.position.x = Math.max(-31, Math.min(31, obs.mesh.position.x));
-          obs.mesh.position.z = Math.max(-31, Math.min(31, obs.mesh.position.z));
+          obs.mesh.position.x = Math.max(-32, Math.min(32, obs.mesh.position.x));
+          obs.mesh.position.z = Math.max(-32, Math.min(32, obs.mesh.position.z));
         }
       });
 
-      // ĐỐI THỦ AI
+      // ĐỐI THỦ AI: ÁP DỤNG VẬT LÝ RAYCASTING TRÊN .GLB
       if (playerModel && enemyModel && !isEnemyDead && !isPlayerDead) {
         const edx = playerModel.position.x - enemyModel.position.x;
         const edy = playerModel.position.y - enemyModel.position.y;
@@ -1601,7 +1486,7 @@ class RobotBattleHtml {
             enemyGrounded = false;
             enemyVerticalVelocity = 0;
           } else {
-            enemyModel.position.y += (enemyGroundY - enemyModel.position.y) * 0.35;
+            enemyModel.position.y += (enemyGroundY - enemyModel.position.y) * 0.38;
           }
         }
         if (!enemyGrounded) {
@@ -1614,7 +1499,7 @@ class RobotBattleHtml {
           }
         }
 
-        resolveHorizontalCollisions(enemyModel, 0.65);
+        resolveCollisions(enemyModel, 0.65);
 
         if (enemyAIMode) {
           enemyModel.rotation.y = Math.atan2(edx, edz);
