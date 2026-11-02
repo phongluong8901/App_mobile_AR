@@ -23,6 +23,7 @@ dependencies:
   sensors_plus: ^6.1.0
   arcore_flutter_plus: ^1.0.2
   vector_math: ^2.1.4
+  webview_flutter: ^4.14.1
 
 dev_dependencies:
   flutter_test:
