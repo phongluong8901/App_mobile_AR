@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../../../../core/utils/ar_launcher.dart';
+import '../../data/selected_fighter_service.dart';
 
 /// Dữ liệu một Nhân vật 3D trong Studio
 class CharacterData {
@@ -119,6 +120,20 @@ class _Character3DScreenState extends State<Character3DScreen> {
 
   void _confirmChooseFighter() {
     HapticFeedback.heavyImpact();
+    final selected = characters[_selectedCharacterIndex];
+    SelectedFighterService.instance.selectFighter(
+      FighterConfig(
+        id: selected.id,
+        name: selected.name,
+        role: selected.role,
+        modelUrl: selected.modelUrl,
+        speed: selected.speed,
+        power: selected.power,
+        maxHp: selected.hp,
+        themeColor: selected.themeColor,
+        hexColor: '#${selected.themeColor.value.toRadixString(16).padLeft(8, '0').substring(2)}',
+      ),
+    );
     setState(() {
       _selectedActiveFighterIndex = _selectedCharacterIndex;
     });
@@ -126,10 +141,10 @@ class _Character3DScreenState extends State<Character3DScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '🔥 Đã chọn "${characters[_selectedCharacterIndex].name}" làm Tướng Chiến Đấu!',
+          'Đã chọn "${selected.name}" làm Chiến Binh Đấu Trường (HP: ${selected.hp}, Sức mạnh: ${selected.power}, Tốc độ: ${selected.speed})',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: characters[_selectedCharacterIndex].themeColor,
+        backgroundColor: selected.themeColor,
         duration: const Duration(seconds: 2),
       ),
     );
@@ -189,202 +204,217 @@ class _Character3DScreenState extends State<Character3DScreen> {
             ),
           ),
 
-          // THANH CHỌN TƯỚNG TRÊN ĐẦU
+          // THANH CHỌN TƯỚNG TRÊN ĐẦU (TƯƠNG THÍCH MỌI TAI THỎ / NOTCH)
           Positioned(
-            top: 12,
+            top: 10,
             left: 12,
             right: 12,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: List.generate(characters.length, (index) {
-                  final char = characters[index];
-                  final isSelected = index == _selectedCharacterIndex;
-                  final isFighter = index == _selectedActiveFighterIndex;
+            child: SafeArea(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: List.generate(characters.length, (index) {
+                    final char = characters[index];
+                    final isSelected = index == _selectedCharacterIndex;
+                    final isFighter = index == _selectedActiveFighterIndex;
 
-                  return GestureDetector(
-                    onTap: () => _selectCharacter(index),
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? char.themeColor.withValues(alpha: 0.25)
-                            : Colors.black.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected ? char.themeColor : Colors.white24,
-                          width: isSelected ? 2.0 : 1.0,
-                        ),
-                        boxShadow: isSelected
-                            ? [BoxShadow(color: char.themeColor.withValues(alpha: 0.4), blurRadius: 10)]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(char.icon, color: char.themeColor, size: 18),
-                          const SizedBox(width: 6),
-                          Text(
-                            char.name,
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : Colors.white70,
-                              fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            ),
+                    return GestureDetector(
+                      onTap: () => _selectCharacter(index),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? char.themeColor.withValues(alpha: 0.25)
+                              : Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected ? char.themeColor : Colors.white24,
+                            width: isSelected ? 2.0 : 1.0,
                           ),
-                          if (isFighter) ...[
+                          boxShadow: isSelected
+                              ? [BoxShadow(color: char.themeColor.withValues(alpha: 0.4), blurRadius: 10)]
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(char.icon, color: char.themeColor, size: 18),
                             const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.greenAccent.withValues(alpha: 0.3),
-                                borderRadius: BorderRadius.circular(6),
+                            Text(
+                              char.name,
+                              style: TextStyle(
+                                color: isSelected ? Colors.white : Colors.white70,
+                                fontSize: 12,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                               ),
-                              child: const Text('ĐANG DÙNG', style: TextStyle(color: Colors.greenAccent, fontSize: 8.5, fontWeight: FontWeight.bold)),
                             ),
+                            if (isFighter) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.greenAccent.withValues(alpha: 0.3),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text('ĐANG DÙNG', style: TextStyle(color: Colors.greenAccent, fontSize: 8.5, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                  );
-                }),
+                    );
+                  }),
+                ),
               ),
             ),
           ),
 
-          // BẢNG THÔNG TIN CHỈ SỐ & NÚT HÀNH ĐỘNG DƯỚI ĐÁY
+          // BẢNG THÔNG TIN CHỈ SỐ & NÚT HÀNH ĐỘNG DƯỚI ĐÁY (RESPONSIVE CHO MỌI MÀN HÌNH & GẬP)
           Positioned(
-            bottom: 16,
-            left: 14,
-            right: 14,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xE60A0F1D),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: character.themeColor.withValues(alpha: 0.6), width: 1.5),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: 20),
-                  BoxShadow(color: character.themeColor.withValues(alpha: 0.25), blurRadius: 12),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // TÊN VÀ CLASS
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            bottom: 12,
+            left: 12,
+            right: 12,
+            child: SafeArea(
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.44,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xE60A0F1D),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: character.themeColor.withValues(alpha: 0.6), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.8), blurRadius: 20),
+                    BoxShadow(color: character.themeColor.withValues(alpha: 0.25), blurRadius: 12),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      // TÊN VÀ CLASS
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            character.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                character.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                character.role,
+                                style: TextStyle(
+                                  color: character.themeColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          // CHỌN MÀU NỀN STUDIO
+                          Row(
+                            children: List.generate(_bgColors.length, (idx) {
+                              final isBgSel = idx == _selectedBgIndex;
+                              return GestureDetector(
+                                onTap: () => setState(() => _selectedBgIndex = idx),
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                                  width: 20,
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    color: _bgColors[idx],
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isBgSel ? const Color(0xFF00E5FF) : Colors.white24,
+                                      width: isBgSel ? 2 : 1,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+
+                      // MÔ TẢ NGẮN
+                      Text(
+                        character.description,
+                        style: const TextStyle(color: Colors.white70, fontSize: 10.5, height: 1.25),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+
+                      // THANH CHỈ SỐ: TỐC ĐỘ, LỰC ĐÁNH, MÁU
+                      _buildStatBar('Tốc độ', character.speed, const Color(0xFF38BDF8)),
+                      const SizedBox(height: 3),
+                      _buildStatBar('Lực đánh', character.power, const Color(0xFFEF4444)),
+                      const SizedBox(height: 3),
+                      _buildStatBar('Máu (HP)', character.hp, const Color(0xFF10B981)),
+                      const SizedBox(height: 10),
+
+                      // HÀNG NÚT BẤM: CHỌN TƯỚNG & XEM AR
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isCurrentFighter ? Colors.white24 : character.themeColor,
+                                foregroundColor: isCurrentFighter ? Colors.white : Colors.black,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: Icon(isCurrentFighter ? Icons.check_circle : Icons.flash_on, size: 16),
+                              label: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  isCurrentFighter ? 'ĐANG CHỌN TƯỚNG NÀY' : 'CHỌN CHIẾN BINH NÀY',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                ),
+                              ),
+                              onPressed: isCurrentFighter ? null : _confirmChooseFighter,
                             ),
                           ),
-                          Text(
-                            character.role,
-                            style: TextStyle(
-                              color: character.themeColor,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF00E5FF),
+                                side: const BorderSide(color: Color(0xFF00E5FF)),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: const Icon(Icons.view_in_ar, size: 16),
+                              label: const FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text('ĐẶT RA SÀN (AR)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10.5)),
+                              ),
+                              onPressed: () {
+                                ArLauncher.launchAr(
+                                  context: context,
+                                  modelUrl: character.modelUrl,
+                                  title: character.name,
+                                );
+                              },
                             ),
                           ),
                         ],
                       ),
-                      // CHỌN MÀU NỀN STUDIO
-                      Row(
-                        children: List.generate(_bgColors.length, (idx) {
-                          final isBgSel = idx == _selectedBgIndex;
-                          return GestureDetector(
-                            onTap: () => setState(() => _selectedBgIndex = idx),
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 3),
-                              width: 22,
-                              height: 22,
-                              decoration: BoxDecoration(
-                                color: _bgColors[idx],
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: isBgSel ? const Color(0xFF00E5FF) : Colors.white24,
-                                  width: isBgSel ? 2 : 1,
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-
-                  // MÔ TẢ NGẮN
-                  Text(
-                    character.description,
-                    style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.3),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 12),
-
-                  // THANH CHỈ SỐ: TỐC ĐỘ, LỰC ĐÁNH, MÁU
-                  _buildStatBar('Tốc độ', character.speed, const Color(0xFF38BDF8)),
-                  const SizedBox(height: 4),
-                  _buildStatBar('Lực đánh', character.power, const Color(0xFFEF4444)),
-                  const SizedBox(height: 4),
-                  _buildStatBar('Máu (HP)', character.hp, const Color(0xFF10B981)),
-                  const SizedBox(height: 14),
-
-                  // HÀNG NÚT BẤM: CHỌN TƯỚNG & XEM AR
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isCurrentFighter ? Colors.white24 : character.themeColor,
-                            foregroundColor: isCurrentFighter ? Colors.white : Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          ),
-                          icon: Icon(isCurrentFighter ? Icons.check_circle : Icons.flash_on, size: 18),
-                          label: Text(
-                            isCurrentFighter ? 'ĐANG CHỌN TƯỚNG NÀY' : 'CHỌN CHIẾN BINH NÀY',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
-                          onPressed: isCurrentFighter ? null : _confirmChooseFighter,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF00E5FF),
-                            side: const BorderSide(color: Color(0xFF00E5FF)),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          ),
-                          icon: const Icon(Icons.view_in_ar, size: 18),
-                          label: const Text('ĐẶT RA SÀN (AR)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                          onPressed: () {
-                            ArLauncher.launchAr(
-                              context: context,
-                              modelUrl: character.modelUrl,
-                              title: character.name,
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
           ),

@@ -14,6 +14,7 @@ class ArLocationModel {
   final double rotZ;
   final double rotW;
   final double rotationAngleY;
+  final double scale; // Tỉ lệ phóng to / thu nhỏ vật thể (mặc định 1.0)
   final String? customUrl; // URL ảnh 3D hoặc model 3D tùy chọn
   final DateTime createdAt;
 
@@ -29,6 +30,7 @@ class ArLocationModel {
     required this.rotZ,
     required this.rotW,
     required this.rotationAngleY,
+    this.scale = 1.0,
     this.customUrl,
     required this.createdAt,
   });
@@ -46,6 +48,7 @@ class ArLocationModel {
       'rot_z': rotZ,
       'rot_w': rotW,
       'rotation_angle_y': rotationAngleY,
+      'scale': scale,
       'custom_url': customUrl,
       'created_at': createdAt.toIso8601String(),
     };
@@ -64,6 +67,7 @@ class ArLocationModel {
       rotZ: (map['rot_z'] as num).toDouble(),
       rotW: (map['rot_w'] as num).toDouble(),
       rotationAngleY: (map['rotation_angle_y'] as num).toDouble(),
+      scale: (map['scale'] as num?)?.toDouble() ?? 1.0,
       customUrl: map['custom_url'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
     );

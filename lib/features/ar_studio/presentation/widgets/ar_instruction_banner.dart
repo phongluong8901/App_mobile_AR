@@ -49,10 +49,10 @@ class ArInstructionBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 !isPlaneDetected
-                    ? '🔍 Đang quét... Hãy lia camera CHẬM xuống sàn/bàn có vân gỗ/họa tiết để khóa mặt phẳng.'
+                    ? 'Đang tìm bề mặt... Hãy lia camera chậm xuống mặt bàn/cuốn sách để khóa tọa độ AR.'
                     : (placedCount == 0
-                        ? '✅ ĐÃ TÌM THẤY MẶT PHẲNG! Hãy chạm ngón tay vào vùng có lưới chấm để ghim.'
-                        : '🎯 Đã ghim $placedCount đối tượng! Bạn có thể bước đi vòng quanh để ngắm nhìn.'),
+                        ? 'ĐÃ KHÓA BỀ MẶT: Hướng camera vào cuốn sách thật, chạm vào để chiếu mô hình 3D ghi đè lên sách.'
+                        : 'Đã ghim $placedCount đối tượng 3D. Chạm vào vật thể để phóng to, xoay hoặc xóa.'),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 13,

@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:proj_1/features/ar_studio/presentation/screens/ar_view_screen.dart';
+import 'package:proj_1/features/book_ar_scanner/presentation/screens/book_ar_scanner_screen.dart';
 import 'package:proj_1/features/character_3d/presentation/screens/character_3d_screen.dart';
 import 'package:proj_1/features/game_3d/presentation/screens/threejs_game_screen.dart';
 
 /// Màn hình điều hướng chính (Master Navigation Hub).
-/// Gồm 3 Tab độc lập theo kiến trúc Feature-First:
-/// 1. AR Studio: ARCore Native 6DoF Camera (Bảng Data 3D, Quả cầu Bubble 3D).
-/// 2. Character 3D: Khám phá mô hình 3D 360 độ (Phi hành gia, AR Scene Viewer).
-/// 3. Game 3D: Đấu trường Robot Three.js PvP (Vật lý chống va chạm, Đấm nhau, Zoom cam).
+/// Sử dụng IndexedStack để duy trì phiên AR Camera và WebGL ổn định 100%,
+/// ngăn chặn việc khởi tạo và hủy SurfaceView liên tục gây xung đột camera trên Android.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -17,25 +16,33 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  final GlobalKey<ArViewScreenState> _arScreenKey = GlobalKey<ArViewScreenState>();
 
-  Widget _buildCurrentTab() {
-    switch (_currentIndex) {
-      case 0:
-        return const ArViewScreen();
-      case 1:
-        return const Character3DScreen();
-      case 2:
-        return const ThreeJsGameScreen();
-      default:
-        return const ArViewScreen();
-    }
+  void _openInArCamera(int shapeIndex) {
+    _arScreenKey.currentState?.selectShape(shapeIndex);
+    setState(() {
+      _currentIndex = 0;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isShortHeight = MediaQuery.of(context).size.height < 520;
+
     return Scaffold(
-      body: _buildCurrentTab(),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          ArViewScreen(key: _arScreenKey),
+          BookArScannerScreen(
+            onSwitchToArCamera: _openInArCamera,
+          ),
+          const Character3DScreen(),
+          const ThreeJsGameScreen(),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
+        height: isShortHeight ? 54 : 66,
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
           setState(() {
@@ -44,6 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         backgroundColor: const Color(0xFF0D1117),
         indicatorColor: const Color(0xFF00E5FF).withValues(alpha: 0.25),
+        labelBehavior: isShortHeight
+            ? NavigationDestinationLabelBehavior.alwaysHide
+            : NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.camera_alt_outlined, color: Colors.white70),
@@ -51,12 +61,14 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'AR Studio',
           ),
           NavigationDestination(
+            icon: Icon(Icons.auto_stories_outlined, color: Colors.white70),
+            selectedIcon: Icon(Icons.auto_stories, color: Color(0xFF00E5FF)),
+            label: 'AR Sách & 3D',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.accessibility_new_outlined, color: Colors.white70),
-            selectedIcon: Icon(
-              Icons.accessibility_new,
-              color: Color(0xFF00E5FF),
-            ),
-            label: 'Chọn Tướng 3D',
+            selectedIcon: Icon(Icons.accessibility_new, color: Color(0xFF00E5FF)),
+            label: 'Chọn Tướng',
           ),
           NavigationDestination(
             icon: Icon(Icons.sports_esports_outlined, color: Colors.white70),

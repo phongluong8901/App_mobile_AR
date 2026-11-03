@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,11 +9,11 @@ import 'package:vector_math/vector_math_64.dart' as vector;
 
 import '../widgets/ar_dashboard_texture_generator.dart';
 import '../widgets/ar_instruction_banner.dart';
-import '../widgets/ar_node_factory.dart';
 import '../widgets/ar_selection_toolbar.dart';
 import '../../../../core/utils/ar_launcher.dart';
 import '../../data/models/ar_location_model.dart';
 import '../../data/services/ar_location_storage_service.dart';
+import 'package:proj_1/features/character_3d/data/selected_fighter_service.dart';
 
 /// Quản lý từng vật thể AR đang ghim trong không gian thực
 class PlacedArNode {
@@ -24,6 +23,7 @@ class PlacedArNode {
   final vector.Vector3 position;
   double rotationAngleY;
   vector.Vector4 rotation;
+  double scale;
   Uint8List? textureBytes; // Dành cho Khung tranh 3D hoặc Dashboard
   String? customUrl;
 
@@ -34,6 +34,7 @@ class PlacedArNode {
     required this.position,
     required this.rotationAngleY,
     required this.rotation,
+    this.scale = 1.0,
     this.textureBytes,
     this.customUrl,
   });
@@ -50,21 +51,34 @@ class ArViewScreen extends StatefulWidget {
   const ArViewScreen({super.key});
 
   @override
-  State<ArViewScreen> createState() => _ArViewScreenState();
+  State<ArViewScreen> createState() => ArViewScreenState();
 }
 
-class _ArViewScreenState extends State<ArViewScreen> {
+class ArViewScreenState extends State<ArViewScreen> {
   ArCoreController? _arCoreController;
 
   int _selectedShapeIndex = 0;
 
-  static const List<String> _shapeNames = [
-    '📊 Bảng Data 3D',
-    '🤖 Nhân Vật 3D AR',
-    '🖼️ Tranh 3D từ URL',
-    '🔮 Quả cầu Bubble 3D',
-    '🧊 Khối Gold 3D',
-    '🔴 Trụ Ruby 3D',
+  void selectShape(int index) {
+    if (index >= 0 && index < _shapeNames.length) {
+      setState(() {
+        _selectedShapeIndex = index;
+      });
+      _showSnack('Đã kích hoạt chế độ: [${_shapeNames[index]}]. Hãy lia camera vào sách/bàn và chạm để chiếu 3D ghi đè!');
+    }
+  }
+
+  List<String> get _shapeNames => [
+    'Bảng Data Hologram',
+    '${SelectedFighterService.instance.currentFighter.name} 3D',
+    'Khung Tranh Kỹ Thuật Số',
+    'Bản Đồ Barcelona 3D Pop-Up',
+    'IKEA Showroom 3D Ghi Đè',
+    'Cuốn Sách AR 3D Mở',
+    'Quả Cầu Plasma Cyan',
+    'Khối Lập Phương Gold',
+    'Trụ Năng Lượng Ruby',
+    'Drone Bay Trinh Sát 3D',
   ];
 
   static const String nodeDashboardName = 'spatial_data_dashboard_screen';
@@ -149,7 +163,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
 
     final tp = TextPainter(
       text: const TextSpan(
-        text: '🖼️ 3D AR PHOTO FRAME\n(Cyber Hologram Art)',
+        text: '3D AR PHOTO FRAME\n(Cyber Hologram Art)',
         style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
       ),
       textAlign: TextAlign.center,
@@ -167,7 +181,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
   @override
   void dispose() {
     _clockTimer.cancel();
-    _arCoreController?.dispose();
+    _arCoreController = null;
     super.dispose();
   }
 
@@ -201,7 +215,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
       setState(() {
         _selectedNode = found;
       });
-      _showSnack('🎯 Đã chọn [${found.name}]! Bạn có thể Xoay hoặc Xóa ở thanh công cụ dưới.');
+      _showSnack('[CHỌN] Đã chọn đối tượng [${found.name}]. Bạn có thể Phóng to, Xoay hoặc Xóa.');
     }
 
     if (nodeName == nodeDashboardName) {
@@ -231,15 +245,17 @@ class _ArViewScreenState extends State<ArViewScreen> {
       roughness: 0.2,
     );
 
+    final currentScale = _selectedNode?.id == nodeDashboardName ? _selectedNode!.scale : 1.0;
+
     final screenCube = ArCoreCube(
       materials: [material],
-      size: vector.Vector3(0.42, 0.26, 0.01),
+      size: vector.Vector3(0.42 * currentScale, 0.26 * currentScale, 0.01 * currentScale),
     );
 
     final node = ArCoreNode(
       name: nodeDashboardName,
       shape: screenCube,
-      position: _dashboardPosition! + vector.Vector3(0, 0.22, 0),
+      position: _dashboardPosition! + vector.Vector3(0, 0.22 * currentScale, 0),
       rotation: _dashboardRotation,
     );
 
@@ -248,7 +264,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
 
   void _handleOnPlaneTap(List<ArCoreHitTestResult> hits) async {
     if (hits.isEmpty) {
-      _showSnack('⚠️ Chưa khóa được mặt phẳng! Hãy lia camera chậm đến khi banner chuyển màu xanh lá.');
+      _showSnack('Chưa khóa được mặt phẳng. Hãy lia camera chậm để khóa không gian AR.');
       return;
     }
 
@@ -262,6 +278,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
     int shapeIndex, {
     String? customUrl,
     Uint8List? preloadedBytes,
+    double initialScale = 1.0,
   }) async {
     if (_arCoreController == null) return;
 
@@ -289,13 +306,13 @@ class _ArViewScreenState extends State<ArViewScreen> {
 
       final screenCube = ArCoreCube(
         materials: [material],
-        size: vector.Vector3(0.42, 0.26, 0.01),
+        size: vector.Vector3(0.42 * initialScale, 0.26 * initialScale, 0.01 * initialScale),
       );
 
       final dashboardNode = ArCoreNode(
         name: nodeDashboardName,
         shape: screenCube,
-        position: position + vector.Vector3(0, 0.22, 0),
+        position: position + vector.Vector3(0, 0.22 * initialScale, 0),
         rotation: rotation,
       );
 
@@ -308,6 +325,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
         position: position,
         rotationAngleY: 0,
         rotation: rotation,
+        scale: initialScale,
         textureBytes: textureBytes,
       );
       _placedNodes.add(placed);
@@ -317,7 +335,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
         _selectedNode = placed;
       });
 
-      _showSnack('🎯 Đã ghim Bảng Data Dashboard lên mặt bàn! Chạm vào để Bật/Tắt đèn.');
+      _showSnack('Đã ghim Bảng Data Hologram. Chạm vào bảng để Bật/Tắt đèn.');
       return;
     }
 
@@ -327,7 +345,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
       final targetUrl = customUrl ?? _customImageUrl;
 
       if (imageBytes == null) {
-        _showSnack('⏳ Đang tải ảnh từ URL...');
+        _showSnack('Đang tải ảnh từ URL...');
         imageBytes = await _fetchImageBytes(targetUrl);
         imageBytes ??= await _generateFallbackImageBytes();
         _cachedImageBytes = imageBytes;
@@ -343,13 +361,13 @@ class _ArViewScreenState extends State<ArViewScreen> {
       // Khung tranh 3D: Rộng 44cm x Cao 30cm x Dày 1.8cm
       final pictureFrame = ArCoreCube(
         materials: [material],
-        size: vector.Vector3(0.44, 0.30, 0.018),
+        size: vector.Vector3(0.44 * initialScale, 0.30 * initialScale, 0.018 * initialScale),
       );
 
       final pictureNode = ArCoreNode(
         name: nodeId,
         shape: pictureFrame,
-        position: position + vector.Vector3(0, 0.18, 0),
+        position: position + vector.Vector3(0, 0.18 * initialScale, 0),
         rotation: rotation,
       );
 
@@ -357,11 +375,12 @@ class _ArViewScreenState extends State<ArViewScreen> {
 
       final placed = PlacedArNode(
         id: nodeId,
-        name: 'Tranh 3D URL',
+        name: 'Tranh Kỹ Thuật Số',
         shapeIndex: 2,
         position: position,
         rotationAngleY: 0,
         rotation: rotation,
+        scale: initialScale,
         textureBytes: imageBytes,
         customUrl: targetUrl,
       );
@@ -372,12 +391,12 @@ class _ArViewScreenState extends State<ArViewScreen> {
         _selectedNode = placed;
       });
 
-      _showSnack('🖼️ Đã ghim Khung Tranh 3D từ URL lên sàn! Chạm vào tranh để Xoay hoặc Xóa.');
+      _showSnack('Đã ghim Khung Tranh Kỹ Thuật Số vào không gian.');
       return;
     }
 
-    // 3. CÁC HÌNH KHÁC (NHÂN VẬT 3D, QUẢ CẦU, KHỐI VÀNG, TRỤ RUBY)
-    final node = _createNodeInstance(nodeId, shapeIndex, position, rotation);
+    // 3. CÁC HÌNH KHÁC (NHÂN VẬT 3D, QUẢ CẦU, KHỐI VÀNG, TRỤ RUBY, LĂNG KÍNH, SÁCH 3D, EMERALD, DRONE)
+    final node = _createNodeInstance(nodeId, shapeIndex, position, rotation, scale: initialScale);
     _arCoreController?.addArCoreNodeWithAnchor(node);
 
     final placed = PlacedArNode(
@@ -387,6 +406,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
       position: position,
       rotationAngleY: 0,
       rotation: rotation,
+      scale: initialScale,
     );
     _placedNodes.add(placed);
 
@@ -395,11 +415,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
       _selectedNode = placed;
     });
 
-    if (shapeIndex == 1) {
-      _showSnack('🤖 Đã ghim Nhân vật 3D lên sàn! Chạm vào để Xoay hoặc Xóa.');
-    } else {
-      _showSnack('🎯 Đã ghim $shapeName vào sàn! Chạm vào để Xoay hoặc Xóa.');
-    }
+    _showSnack('Đã ghim [$shapeName] vào không gian AR.');
   }
 
   ArCoreNode _createNodeInstance(
@@ -407,16 +423,18 @@ class _ArViewScreenState extends State<ArViewScreen> {
     int shapeIndex,
     vector.Vector3 position,
     vector.Vector4 rotation, {
+    double scale = 1.0,
     Uint8List? textureBytes,
   }) {
     switch (shapeIndex) {
       case 1:
+        final fighter = SelectedFighterService.instance.currentFighter;
         return ArCoreReferenceNode(
           name: id,
-          objectUrl: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+          objectUrl: fighter.modelUrl,
           position: position,
           rotation: rotation,
-          scale: vector.Vector3(0.28, 0.28, 0.28),
+          scale: vector.Vector3(0.28 * scale, 0.28 * scale, 0.28 * scale),
         );
       case 2:
         return ArCoreNode(
@@ -425,48 +443,91 @@ class _ArViewScreenState extends State<ArViewScreen> {
             materials: [
               ArCoreMaterial(color: Colors.white, textureBytes: textureBytes, metallic: 0.1, roughness: 0.35),
             ],
-            size: vector.Vector3(0.44, 0.30, 0.018),
+            size: vector.Vector3(0.44 * scale, 0.30 * scale, 0.018 * scale),
           ),
-          position: position + vector.Vector3(0, 0.18, 0),
+          position: position + vector.Vector3(0, 0.18 * scale, 0),
           rotation: rotation,
         );
       case 3:
+        // Bản Đồ Barcelona 3D Pop-Up (Chiếu mọc thẳng đứng trên trang sách/bản đồ)
+        return ArCoreReferenceNode(
+          name: id,
+          objectUrl: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+          position: position + vector.Vector3(0, 0.18 * scale, 0),
+          rotation: rotation,
+          scale: vector.Vector3(0.28 * scale, 0.28 * scale, 0.28 * scale),
+        );
+      case 4:
+        // IKEA Showroom 3D Ghi Đè (Ghế thư giãn Sheen Chair 1:1)
+        return ArCoreReferenceNode(
+          name: id,
+          objectUrl: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/SheenChair/glTF-Binary/SheenChair.glb',
+          position: position,
+          rotation: rotation,
+          scale: vector.Vector3(0.35 * scale, 0.35 * scale, 0.35 * scale),
+        );
+      case 5:
+        // Cuốn Sách AR 3D Mở
+        return ArCoreNode(
+          name: id,
+          shape: ArCoreCube(
+            materials: [
+              ArCoreMaterial(color: const Color(0xFFF8FAFC), metallic: 0.1, roughness: 0.7),
+            ],
+            size: vector.Vector3(0.32 * scale, 0.04 * scale, 0.24 * scale),
+          ),
+          position: position + vector.Vector3(0, 0.02 * scale, 0),
+          rotation: rotation,
+        );
+      case 6:
+        // Quả Cầu Plasma Cyan
         return ArCoreNode(
           name: id,
           shape: ArCoreSphere(
             materials: [
-              ArCoreMaterial(color: const Color(0xFF00E5FF), metallic: 0.8, roughness: 0.1),
+              ArCoreMaterial(color: const Color(0xFF00E5FF), metallic: 0.85, roughness: 0.1),
             ],
-            radius: 0.14,
+            radius: 0.14 * scale,
           ),
-          position: position + vector.Vector3(0, 0.14, 0),
+          position: position + vector.Vector3(0, 0.14 * scale, 0),
           rotation: rotation,
         );
-      case 4:
+      case 7:
+        // Khối Lập Phương Gold
         return ArCoreNode(
           name: id,
           shape: ArCoreCube(
             materials: [
               ArCoreMaterial(color: Colors.amber, metallic: 0.9, roughness: 0.2),
             ],
-            size: vector.Vector3(0.2, 0.2, 0.2),
+            size: vector.Vector3(0.2 * scale, 0.2 * scale, 0.2 * scale),
           ),
-          position: position + vector.Vector3(0, 0.1, 0),
+          position: position + vector.Vector3(0, 0.1 * scale, 0),
           rotation: rotation,
         );
-      case 5:
-      default:
+      case 8:
+        // Trụ Năng Lượng Ruby
         return ArCoreNode(
           name: id,
           shape: ArCoreCylinder(
             materials: [
               ArCoreMaterial(color: Colors.redAccent, metallic: 0.8, roughness: 0.3),
             ],
-            radius: 0.1,
-            height: 0.25,
+            radius: 0.1 * scale,
+            height: 0.25 * scale,
           ),
-          position: position + vector.Vector3(0, 0.125, 0),
+          position: position + vector.Vector3(0, 0.125 * scale, 0),
           rotation: rotation,
+        );
+      case 9:
+      default:
+        // Drone Bay Trinh Sát 3D
+        return ArCoreReferenceNode(
+          name: id,
+          objectUrl: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+          position: position + vector.Vector3(0, 0.25 * scale, 0),
+          rotation: rotation,
+          scale: vector.Vector3(0.32 * scale, 0.32 * scale, 0.32 * scale),
         );
     }
   }
@@ -492,13 +553,44 @@ class _ArViewScreenState extends State<ArViewScreen> {
         node.shapeIndex,
         node.position,
         node.rotation,
+        scale: node.scale,
         textureBytes: node.textureBytes,
       );
       _arCoreController?.addArCoreNodeWithAnchor(updatedNode);
     }
 
     final deg = (node.rotationAngleY * 180 / math.pi).round() % 360;
-    _showSnack('🔄 Đã xoay [${node.name}] sang góc $deg°');
+    _showSnack('Đã xoay [${node.name}] sang góc $deg°');
+  }
+
+  /// PHÓNG TO / THU NHỎ VẬT THỂ 3D ĐƯỢC CHỌN (TĂNG/GIẢM THEO TỈ LỆ)
+  void _scaleSelectedNode(double factor) {
+    if (_selectedNode == null || _arCoreController == null) return;
+    HapticFeedback.selectionClick();
+
+    final node = _selectedNode!;
+    final newScale = (node.scale * factor).clamp(0.25, 4.0);
+    node.scale = newScale;
+
+    _arCoreController?.removeNode(nodeName: node.id);
+
+    if (node.shapeIndex == 0) {
+      _refreshDashboardTexture();
+    } else {
+      final updatedNode = _createNodeInstance(
+        node.id,
+        node.shapeIndex,
+        node.position,
+        node.rotation,
+        scale: node.scale,
+        textureBytes: node.textureBytes,
+      );
+      _arCoreController?.addArCoreNodeWithAnchor(updatedNode);
+    }
+
+    final percent = (node.scale * 100).round();
+    _showSnack('Kích thước [${node.name}]: $percent%');
+    setState(() {});
   }
 
   void _deleteSelectedNode() {
@@ -514,7 +606,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
       _placedObjectsCount = _placedNodes.length;
     });
 
-    _showSnack('🗑️ Đã xóa [${node.name}] khỏi không gian!');
+    _showSnack('Đã xóa [${node.name}] khỏi không gian.');
   }
 
   Future<void> _saveSelectedNodeLocation() async {
@@ -534,6 +626,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
       rotZ: node.rotation.z,
       rotW: node.rotation.w,
       rotationAngleY: node.rotationAngleY,
+      scale: node.scale,
       customUrl: node.customUrl,
       createdAt: DateTime.now(),
     );
@@ -541,7 +634,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
     await ArLocationStorageService.instance.saveLocation(location);
 
     _showSnack(
-      '💾 Đã lưu tọa độ [X: ${node.position.x.toStringAsFixed(2)}, Y: ${node.position.y.toStringAsFixed(2)}, Z: ${node.position.z.toStringAsFixed(2)}] vào CSDL!',
+      'Đã lưu tọa độ và tỉ lệ ${(node.scale * 100).round()}% vào CSDL.',
     );
   }
 
@@ -550,10 +643,10 @@ class _ArViewScreenState extends State<ArViewScreen> {
     final controller = TextEditingController(text: _customImageUrl);
 
     final sampleUrls = [
-      {'name': '🎨 Hội Họa', 'url': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600'},
-      {'name': '🌌 NASA Vũ Trụ', 'url': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600'},
-      {'name': '🏙️ Cyberpunk', 'url': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600'},
-      {'name': '🌸 Anime Phong Cảnh', 'url': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600'},
+      {'name': 'Hội Họa', 'url': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600'},
+      {'name': 'Không Gian Vũ Trụ', 'url': 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600'},
+      {'name': 'Thành Phố Cyberpunk', 'url': 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600'},
+      {'name': 'Phong Cảnh Thiên Nhiên', 'url': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600'},
     ];
 
     showDialog(
@@ -627,13 +720,13 @@ class _ArViewScreenState extends State<ArViewScreen> {
                     _selectedShapeIndex = 2; // Chuyển luôn sang tab Khung tranh 3D
                   });
                   Navigator.pop(ctx);
-                  _showSnack('⏳ Đang tải ảnh mới từ URL...');
+                  _showSnack('Đang tải ảnh mới từ URL...');
                   final bytes = await _fetchImageBytes(newUrl);
                   if (bytes != null) {
                     _cachedImageBytes = bytes;
-                    _showSnack('✅ Đã tải xong! Hãy chạm vào sàn nhà để ghim Khung Tranh 3D.');
+                    _showSnack('Đã tải xong. Hãy chạm vào sàn nhà để ghim Khung Tranh 3D.');
                   } else {
-                    _showSnack('⚠️ Không thể tải ảnh trực tiếp, sẽ dùng ảnh khung 3D nghệ thuật dự phòng.');
+                    _showSnack('Không thể tải ảnh trực tiếp, sử dụng ảnh mặc định.');
                   }
                 }
               },
@@ -692,7 +785,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
                             setModalState(() {
                               locations.clear();
                             });
-                            _showSnack('🧹 Đã xóa toàn bộ dữ liệu vị trí AR đã lưu!');
+                            _showSnack('Đã xóa toàn bộ dữ liệu vị trí AR đã lưu.');
                           },
                         ),
                     ],
@@ -703,7 +796,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
                       padding: EdgeInsets.symmetric(vertical: 36),
                       child: Center(
                         child: Text(
-                          'Chưa có tọa độ nào được lưu.\nHãy ghim vật thể/khung tranh ra sàn, chạm vào vật thể rồi bấm [💾 Lưu Vị Trí]!',
+                          'Chưa có tọa độ nào được lưu.\nHãy ghim vật thể ra sàn, chạm vào vật thể rồi bấm [Lưu Vị Trí].',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.white60, fontSize: 12),
                         ),
@@ -765,8 +858,9 @@ class _ArViewScreenState extends State<ArViewScreen> {
                                       vector.Vector4(item.rotX, item.rotY, item.rotZ, item.rotW),
                                       item.shapeIndex,
                                       customUrl: item.customUrl,
+                                      initialScale: item.scale,
                                     );
-                                    _showSnack('✨ Đã khôi phục [${item.name}] từ CSDL ra sàn AR!');
+                                    _showSnack('Đã khôi phục [${item.name}] từ CSDL ra không gian AR.');
                                   },
                                 ),
                                 IconButton(
@@ -821,7 +915,7 @@ class _ArViewScreenState extends State<ArViewScreen> {
       _dashboardPosition = null;
       _arKey = UniqueKey();
     });
-    _showSnack('🧹 Đã xóa toàn bộ đối tượng AR trong không gian!');
+    _showSnack('Đã xóa toàn bộ đối tượng AR trong không gian.');
   }
 
   @override
@@ -849,10 +943,11 @@ class _ArViewScreenState extends State<ArViewScreen> {
             icon: const Icon(Icons.view_in_ar, color: Color(0xFF00E5FF)),
             tooltip: 'Chiếu Nhân vật 3D ra sàn ngoài đời thực (Google AR 6DoF)',
             onPressed: () {
+              final fighter = SelectedFighterService.instance.currentFighter;
               ArLauncher.launchAr(
                 context: context,
-                modelUrl: 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
-                title: 'Robot Expressive (AR 3D)',
+                modelUrl: fighter.modelUrl,
+                title: '${fighter.name} (AR 3D)',
               );
             },
           ),
@@ -874,132 +969,221 @@ class _ArViewScreenState extends State<ArViewScreen> {
             enableUpdateListener: true,
           ),
 
-          // BANNER HƯỚNG DẪN TRÊN CÙNG
+          // BANNER HƯỚNG DẪN TRÊN CÙNG (TỰ ĐỘNG THEO NOTCH/TAI THỎ)
           Positioned(
-            top: 14,
-            left: 16,
-            right: 16,
-            child: ArInstructionBanner(
-              placedCount: _placedObjectsCount,
-              isPlaneDetected: _isPlaneDetected,
+            top: 10,
+            left: 12,
+            right: 12,
+            child: SafeArea(
+              child: ArInstructionBanner(
+                placedCount: _placedObjectsCount,
+                isPlaneDetected: _isPlaneDetected,
+              ),
             ),
           ),
 
-          // THANH ĐIỀU KHIỂN VẬT THỂ KHI ĐƯỢC CHỌN (XOAY / XÓA / LƯU VỊ TRÍ)
-          if (_selectedNode != null)
-            Positioned(
-              bottom: 96,
-              left: 16,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xF20A0F1D),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x6600E5FF), blurRadius: 16),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // KHUNG NGẮM QUÉT BÌA SÁCH / VẬT THỂ KHI CHỌN SÁCH HOẶC BẢN ĐỒ
+          if ((_selectedShapeIndex == 3 || _selectedShapeIndex == 4 || _selectedShapeIndex == 5) && _placedObjectsCount == 0)
+            Center(
+              child: IgnorePointer(
+                child: Container(
+                  width: 240,
+                  height: 300,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: _isPlaneDetected ? const Color(0xFF00E5FF) : Colors.white30,
+                      width: 2,
+                    ),
+                    boxShadow: _isPlaneDetected
+                        ? [const BoxShadow(color: Color(0x4D00E5FF), blurRadius: 16)]
+                        : null,
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.touch_app, color: Color(0xFF00E5FF), size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              'ĐANG CHỌN: ${_selectedNode!.name.toUpperCase()}',
-                              style: const TextStyle(
-                                color: Color(0xFF00E5FF),
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                        Icon(
+                          Icons.center_focus_strong,
+                          color: _isPlaneDetected ? const Color(0xFF00E5FF) : Colors.white38,
+                          size: 44,
                         ),
-                        GestureDetector(
-                          onTap: () => setState(() => _selectedNode = null),
-                          child: const Icon(Icons.close, color: Colors.white60, size: 18),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            _isPlaneDetected ? 'CHẠM VÀO SÁCH ĐỂ CHIẾU 3D GHI ĐÈ' : 'HƯỚNG CAMERA VÀO BÌA SÁCH / VẬT THỂ',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _isPlaneDetected ? const Color(0xFF00E5FF) : Colors.white60,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // XOAY TRÁI -30 ĐỘ
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white12,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          icon: const Icon(Icons.rotate_left, size: 18, color: Color(0xFF00E5FF)),
-                          label: const Text('Xoay -30°', style: TextStyle(fontSize: 11)),
-                          onPressed: () => _rotateSelectedNode(-math.pi / 6),
-                        ),
-                        // XOAY PHẢI +30 ĐỘ
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white12,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          icon: const Icon(Icons.rotate_right, size: 18, color: Color(0xFF00E5FF)),
-                          label: const Text('Xoay +30°', style: TextStyle(fontSize: 11)),
-                          onPressed: () => _rotateSelectedNode(math.pi / 6),
-                        ),
-                        // LƯU VỊ TRÍ VÀO CSDL
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00E5FF).withValues(alpha: 0.25),
-                            foregroundColor: const Color(0xFF00E5FF),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: const BorderSide(color: Color(0xFF00E5FF)),
-                            ),
-                          ),
-                          icon: const Icon(Icons.save, size: 18),
-                          label: const Text('Lưu Vị Trí', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          onPressed: _saveSelectedNodeLocation,
-                        ),
-                        // XÓA VẬT THỂ NÀY
-                        IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: Colors.redAccent.withValues(alpha: 0.25),
-                            foregroundColor: Colors.redAccent,
-                          ),
-                          icon: const Icon(Icons.delete_outline, size: 20),
-                          tooltip: 'Xóa vật thể này',
-                          onPressed: _deleteSelectedNode,
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
 
-          // THANH CÔNG CỤ CHỌN VẬT THỂ ĐỂ GHIM
+          // THANH CÔNG CỤ DƯỚI ĐÁY TÍCH HỢP (RESPONSIVE CHO MỌI DÒNG MÁY & MÀN GẬP)
           Positioned(
-            bottom: 24,
-            left: 16,
-            right: 16,
-            child: ArSelectionToolbar(
-              shapeNames: _shapeNames,
-              selectedIndex: _selectedShapeIndex,
-              onSelect: (index) {
-                setState(() {
-                  _selectedShapeIndex = index;
-                });
-              },
+            bottom: 10,
+            left: 12,
+            right: 12,
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // THANH ĐIỀU KHIỂN VẬT THỂ KHI ĐƯỢC CHỌN (PHÓNG TO / THU NHỎ / XOAY / LƯU / XÓA)
+                  if (_selectedNode != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xF20A0F1D),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x6600E5FF), blurRadius: 14),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.touch_app, color: Color(0xFF00E5FF), size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'ĐANG CHỌN: ${_selectedNode!.name.toUpperCase()} • TỈ LỆ: ${(_selectedNode!.scale * 100).round()}%',
+                                    style: const TextStyle(
+                                      color: Color(0xFF00E5FF),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              GestureDetector(
+                                onTap: () => setState(() => _selectedNode = null),
+                                child: const Icon(Icons.close, color: Colors.white60, size: 18),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          // HÀNG NÚT CUỘN NGANG AN TOÀN TRÁNH TRÀN TRÊN MÁY BẢNG / GẬP FOLD 4
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                // NÚT PHÓNG TO
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF00E5FF).withValues(alpha: 0.22),
+                                    foregroundColor: const Color(0xFF00E5FF),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      side: const BorderSide(color: Color(0xFF00E5FF)),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.zoom_in, size: 16),
+                                  label: const Text('Phóng to (+)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                  onPressed: () => _scaleSelectedNode(1.2),
+                                ),
+                                const SizedBox(width: 6),
+                                // NÚT THU NHỎ
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white12,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  icon: const Icon(Icons.zoom_out, size: 16, color: Colors.amberAccent),
+                                  label: const Text('Thu nhỏ (-)', style: TextStyle(fontSize: 11)),
+                                  onPressed: () => _scaleSelectedNode(0.83),
+                                ),
+                                const SizedBox(width: 6),
+                                // XOAY TRÁI -30 ĐỘ
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white12,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  icon: const Icon(Icons.rotate_left, size: 16, color: Color(0xFF00E5FF)),
+                                  label: const Text('-30°', style: TextStyle(fontSize: 11)),
+                                  onPressed: () => _rotateSelectedNode(-math.pi / 6),
+                                ),
+                                const SizedBox(width: 6),
+                                // XOAY PHẢI +30 ĐỘ
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white12,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  icon: const Icon(Icons.rotate_right, size: 16, color: Color(0xFF00E5FF)),
+                                  label: const Text('+30°', style: TextStyle(fontSize: 11)),
+                                  onPressed: () => _rotateSelectedNode(math.pi / 6),
+                                ),
+                                const SizedBox(width: 6),
+                                // LƯU VỊ TRÍ VÀO CSDL
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF00E5FF).withValues(alpha: 0.28),
+                                    foregroundColor: const Color(0xFF00E5FF),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      side: const BorderSide(color: Color(0xFF00E5FF)),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.save, size: 16),
+                                  label: const Text('Lưu Vị Trí', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                  onPressed: _saveSelectedNodeLocation,
+                                ),
+                                const SizedBox(width: 6),
+                                // XÓA VẬT THỂ NÀY
+                                IconButton(
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.redAccent.withValues(alpha: 0.25),
+                                    foregroundColor: Colors.redAccent,
+                                    padding: const EdgeInsets.all(7),
+                                  ),
+                                  icon: const Icon(Icons.delete_outline, size: 18),
+                                  tooltip: 'Xóa vật thể này',
+                                  onPressed: _deleteSelectedNode,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // THANH CÔNG CỤ CHỌN VẬT THỂ ĐỂ GHIM (DOCK CHÍNH)
+                  ArSelectionToolbar(
+                    shapeNames: _shapeNames,
+                    selectedIndex: _selectedShapeIndex,
+                    onSelect: (index) {
+                      setState(() {
+                        _selectedShapeIndex = index;
+                      });
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         ],
